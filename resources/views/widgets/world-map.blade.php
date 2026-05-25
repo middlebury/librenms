@@ -56,16 +56,6 @@
   margin: 8px !important;
 }
 
-/* Popup arrow positioning */
-#worldmap_widget-{{ $id }} .leaflet-popup.marker-style .leaflet-popup-tip-container {
-  margin-top: -20px;
-  margin-left: -8px;
-}
-#worldmap_widget-{{ $id }} .leaflet-popup.link-style .leaflet-popup-tip-container {
-  margin-top: -25px;
-  margin-left: -8px;
-}
-
 /* Popup arrow fill */
 #worldmap_widget-{{ $id }} .leaflet-popup.marker-style .leaflet-popup-tip,
 #worldmap_widget-{{ $id }} .leaflet-popup.link-style .leaflet-popup-tip {
@@ -143,7 +133,6 @@
 #worldmap_widget-{{ $id }} .leaflet-popup.link-style .leaflet-popup-content,
 #worldmap_widget-{{ $id }} .leaflet-popup.link-style .leaflet-popup-content-wrapper {
   min-width: var(--wm-link-popup-min-width);
-  margin-bottom: 12px;
 }
 #worldmap_widget-{{ $id }} .link-popup__title {
   display: flex;
@@ -602,10 +591,10 @@
         function getSpeedColor(bps) {
             const gbps = bps / 1000000000;
             if (gbps >= 100) return '#00C49F'; // 100G green
-            if (gbps >= 40)  return '#7641E8'; // 40G purple
+            if (gbps >= 40)  return '#A732E6'; // 40G purple
             if (gbps >= 25)  return '#3261C7'; // 25G blue
-            if (gbps >= 10)  return '#E66A2E'; // 10G orange
-            return '#222222';                  // <10G black
+            if (gbps >= 10)  return '#E09654'; // 10G orange
+            return '#4A4A4A';                  // <10G black
         }
 
         function formatBps(bps) {
