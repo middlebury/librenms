@@ -391,11 +391,11 @@ class MapDataController extends Controller
     {
         $gbps = $bps / 1_000_000_000;
 
-        if ($gbps >= 100) return '#00C49F'; // 100G green
-        if ($gbps >= 40)  return '#A732E6'; // 40G purple
-        if ($gbps >= 25)  return '#3261C7'; // 25G blue
-        if ($gbps >= 10)  return '#E09654'; // 10G orange
-        return '#4A4A4A';                   // <10G black
+        if ($gbps >= 100) return '#0BD25A'; // 100G green
+        if ($gbps >= 40)  return '#DA5DE4'; // 40G pink
+        if ($gbps >= 25)  return '#4F6CA9'; // 25G blue
+        if ($gbps >= 10)  return '#583E23'; // 10G brown
+        return '#C9750F';                   // <10G orange
     }
     // !--
 

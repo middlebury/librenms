@@ -134,24 +134,13 @@
 #worldmap_widget-{{ $id }} .leaflet-popup.link-style .leaflet-popup-content-wrapper {
   min-width: var(--wm-link-popup-min-width);
 }
-#worldmap_widget-{{ $id }} .link-popup__title {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  text-align: center;
-  flex-wrap: wrap;
-}
-#worldmap_widget-{{ $id }} .link-popup__arrow {
-  opacity: 0.85;
-}
 #worldmap_widget-{{ $id }} .overlap-member-meta {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
   font-weight: normal;
-  margin-top: 4px;
+  margin-bottom: 4px;
 }
 #worldmap_widget-{{ $id }} .overlap-member-sep {
   opacity: 0.7;
@@ -215,9 +204,6 @@
   justify-content: flex-start;
   text-align: left;
   font-size: 14px;
-}
-#worldmap_widget-{{ $id }} .overlap-members-list .link-popup__title {
-  align-items: flex-start;
 }
 /* !-- */
 </style>
@@ -369,22 +355,10 @@
         const arrow = "\u{2194}";
         function createLinkTitle(link) {
             if (link['local_name'] && link['remote_name']) {
-                return `
-                    <div class="link-popup__title">
-                        <span>${html_chars(link['local_name'])}</span>
-                        <span class="link-popup__arrow">${arrow}</span>
-                        <span>${html_chars(link['remote_name'])}</span>
-                    </div>
-                `;
+                return `<div class="link-popup__title">${html_chars(link['local_name'])} ${arrow} ${html_chars(link['remote_name'])}</div>`;
             }
 
-            return `
-                <div class="link-popup__title">
-                    <span>${link['local_lat']},${link['local_lng']}</span>
-                    <span class="link-popup__arrow">${arrow}</span>
-                    <span>${link['remote_lat']},${link['remote_lng']}</span>
-                </div>
-            `;
+            return `<div class="link-popup__title">${link['local_lat']},${link['local_lng']} ${arrow} ${link['remote_lat']},${link['remote_lng']}</div>`;
         }
 
         function createLinkHTML(link) {
@@ -590,11 +564,11 @@
 
         function getSpeedColor(bps) {
             const gbps = bps / 1000000000;
-            if (gbps >= 100) return '#00C49F'; // 100G green
-            if (gbps >= 40)  return '#A732E6'; // 40G purple
-            if (gbps >= 25)  return '#3261C7'; // 25G blue
-            if (gbps >= 10)  return '#E09654'; // 10G orange
-            return '#4A4A4A';                  // <10G black
+            if (gbps >= 100) return '#0BD25A'; // 100G green
+            if (gbps >= 40)  return '#DA5DE4'; // 40G pink
+            if (gbps >= 25)  return '#4F6CA9'; // 25G blue
+            if (gbps >= 10)  return '#7A5125'; // 10G brown
+            return '#C9750F';                  // <10G orange
         }
 
         function formatBps(bps) {
@@ -605,17 +579,7 @@
             const mbps = n / 1000000;
             let text = '';
 
-            if (gbps < 10) {
-                if (document.getElementById(map_id)?.dataset.theme === 'dark') {
-                    color = '#FFFFFF';
-                }
-                else {
-                    color = '#222222';
-                }
-            }
-            else {
-                color = getSpeedColor(n);
-            }
+            color = getSpeedColor(n);
 
             if (gbps >= 1) {
                 text = `${gbps % 1 === 0 ? gbps.toFixed(0) : gbps.toFixed(1)}G`;
