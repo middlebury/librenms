@@ -37,14 +37,15 @@ Only leaflet map engine is currently supported
 
 @section('css')
 <style>
+  /* --- ADDED: styling !-- */
 html, body, #fullscreen-map {
    height: 100%;
    width: 100%;
    padding-bottom: 0;
    margin-bottom: 0;
+   container-type: inline-size;
 }
 
-  /* --- ADDED: styling for pop-ups !-- */
     #fullscreen-map {
       /* Default theme values */
       --wm-popup-bg: #f2f2f2ee;
@@ -56,7 +57,7 @@ html, body, #fullscreen-map {
       --wm-popup-padding: 6px;
       --wm-tooltip-font-size: 14px;
 
-      --wm-marker-popup-max-width: calc(100vw - 24px);
+      --wm-marker-popup-max-width: min(1260px, calc(100% - 24px));
       --wm-marker-popup-min-height: min(1260px, calc(100vw - 24px));
 
       --wm-link-popup-min-width: 300px;
@@ -78,15 +79,18 @@ html, body, #fullscreen-map {
     }
 
     /* Popup content */
-    .leaflet-popup.marker-style .leaflet-popup-content,
     .leaflet-popup.marker-style .leaflet-popup-content-wrapper,
-    .leaflet-popup.link-style .leaflet-popup-content,
     .leaflet-popup.link-style .leaflet-popup-content-wrapper {
       background: var(--wm-popup-bg) !important;
       color: var(--wm-popup-text) !important;
       font-size: var(--wm-popup-font-size);
       font-weight: var(--wm-popup-font-weight);
       padding: var(--wm-popup-padding);
+    }
+    .leaflet-popup.marker-style .leaflet-popup-content,
+    .leaflet-popup.link-style .leaflet-popup-content {
+      background: transparent !important;
+      color: inherit !important;
     }
 
     /* Popup arrow fill */
@@ -103,20 +107,20 @@ html, body, #fullscreen-map {
 
     /* Device popup dimensions */
     .leaflet-popup.marker-style .leaflet-popup-content-wrapper {
-      max-width: var(--wm-marker-popup-max-width) !important;
+      max-width: calc(100cqi - 16px) !important;
       max-height: calc(100dvh - 32px);
       box-sizing: border-box;
       overflow: hidden;
     }
     .leaflet-popup.marker-style .leaflet-popup-content {
-      margin: 8px !important;
-      width: min(1260px, calc(100vw - 48px)) !important;
-      max-width: calc(100vw - 48px) !important;
+      width: min(900px, calc(100cqi - 32px)) !important;
+      max-width: calc(100cqi - 32px) !important;
       max-height: calc(100dvh - 64px);
       overflow-y: auto;
       overflow-x: hidden;
       box-sizing: border-box;
       /* -webkit-overflow-scrolling: touch; */
+      margin: 8px !important;
     }
     .leaflet-popup.marker-style .device-popup {
       width: 100%;
@@ -152,13 +156,13 @@ html, body, #fullscreen-map {
       aspect-ratio: 20 / 9;
     }
     /* 2 columns */
-    @media (max-width: 1100px) {
+    @media (max-width: 900px) {
       .leaflet-popup.marker-style .device-popup__graphs {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
     /* 1 column */
-    @media (max-width: 750px) {
+    @media (max-width: 620px) {
       .leaflet-popup.marker-style .device-popup__graphs {
         grid-template-columns: 1fr;
       }
@@ -168,6 +172,14 @@ html, body, #fullscreen-map {
     .leaflet-popup.link-style .leaflet-popup-content,
     .leaflet-popup.link-style .leaflet-popup-content-wrapper {
       min-width: var(--wm-link-popup-min-width);
+    }
+    .overlap-member-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      font-weight: normal;
+      margin-bottom: 4px;
     }
 
     /* Link tooltip */
@@ -193,6 +205,7 @@ html, body, #fullscreen-map {
       align-items: center;
       gap: 6px;
       font-weight: normal;
+      font-size: 15px;
     }
     .overlap-summary::before {
       content: "▶";
@@ -207,6 +220,12 @@ html, body, #fullscreen-map {
       overflow-y: auto;
       overflow-x: hidden;
       padding-right: 4px;
+    }
+    .overlap-members-list .link-popup__title,
+    .overlap-members-list .overlap-member-meta {
+      justify-content: flex-start;
+      text-align: left;
+      font-size: 14px;
     }
     .link-overlap-count {
       pointer-events: none;
@@ -419,14 +438,14 @@ html, body, #fullscreen-map {
 
     function getSpeedColor(bps) {
         const gbps = bps / 1000000000;
-        if (gbps >= 100) return '#00C49F'; // 100G green
-        if (gbps >= 40)  return '#A732E6'; // 40G purple
-        if (gbps >= 25)  return '#3261C7'; // 25G blue
-        if (gbps >= 10)  return '#E09654'; // 10G orange
-        return '#4A4A4A';                  // <10G black
+        if (gbps >= 100) return '#0BD25A'; // 100G green
+        if (gbps >= 40)  return '#DA5DE4'; // 40G pink
+        if (gbps >= 25)  return '#4F6CA9'; // 25G blue
+        if (gbps >= 10)  return '#7A5125'; // 10G brown
+        return '#C9750F';                   // <10G orange
     }
 
-    function formatBps(bps) { 
+    function formatBps(bps) {
         const n = Number(bps || 0);
         let color = '';
 
@@ -434,17 +453,7 @@ html, body, #fullscreen-map {
         const mbps = n / 1000000;
         let text = '';
 
-        if (gbps < 10) {
-            if (document.getElementById('fullscreen-map')?.dataset.theme === 'dark') {
-                color = '#FFFFF';
-            }
-            else {
-                color = '#222222';
-            }
-        }
-        else {
-            color = getSpeedColor(n);
-        }
+        color = getSpeedColor(n);
 
         if (gbps >= 1) {
             text = `${gbps % 1 === 0 ? gbps.toFixed(0) : gbps.toFixed(1)}G`;
@@ -480,11 +489,11 @@ html, body, #fullscreen-map {
     function createLinkTitle(link) {
         if (link['local_name'] && link['remote_name']) {
             if (link['local_device_id'] && link['remote_device_id']) {
-                return `<a href="${createDeviceHREF(link['local_device_id'])}" target="_blank" rel="noopener">${html_chars(link['local_name'])}</a> ${arrow} <a href="${createDeviceHREF(link['remote_device_id'])}" target="_blank" rel="noopener">${html_chars(link['remote_name'])}</a>`;
+                return `<div class="link-popup__title"><a href="${createDeviceHREF(link['local_device_id'])}" target="_blank" rel="noopener">${html_chars(link['local_name'])}</a> ${arrow} <a href="${createDeviceHREF(link['remote_device_id'])}" target="_blank" rel="noopener">${html_chars(link['remote_name'])}</a><div>`;
             }
-            return `<p>${link['local_name']} ${arrow} ${link['remote_name']}</p>`;
+            return `<div class="link-popup__title">${link['local_name']} ${arrow} ${link['remote_name']}</div>`;
         }
-        return `<p>${link['local_lat']},${link['local_lng']} ${arrow} ${link['remote_lat']},${link['remote_lng']}</p>`;
+        return `<div class="link-popup__title">${link['local_lat']},${link['local_lng']} ${arrow} ${link['remote_lat']},${link['remote_lng']}</div>`;
     }
 
     function createLinkHTML(link) {
@@ -494,13 +503,13 @@ html, body, #fullscreen-map {
         const primary = members[0];
 
         if (primary['local_device_id'] && primary['local_port_id']) {
-            html = `<div style="text-align:center;">${createLinkTitle(primary)}<br><a href="${createGraphHREF(primary['local_device_id'], primary['local_port_id'])}" target="_blank" rel="noopener"><img class="graph-image" src="${createGraphURL(null, primary['local_port_id'],"port_bits","-1d","yes")}"></a></div>`;
+            html = `<div style="font-size:18px;text-align:center;">${createLinkTitle(primary)}<br><a href="${createGraphHREF(primary['local_device_id'], primary['local_port_id'])}" target="_blank" rel="noopener"><img class="graph-image" src="${createGraphURL(null, primary['local_port_id'],"port_bits","-1d","yes")}"></a></div>`;
         }
         else if (primary['remote_device_id'] && primary['remote_port_id']) {
-            html = `<div style="text-align:center;">${createLinkTitle(primary)}<br><a href="${createGraphHREF(primary['remote_device_id'], primary['remote_port_id'])}" target="_blank" rel="noopener"><img class="graph-image" src="${createGraphURL(null, primary['remote_port_id'],"port_bits","-1d","yes")}"></a></div>`;
+            html = `<div style="font-size:18px;text-align:center;">${createLinkTitle(primary)}<br><a href="${createGraphHREF(primary['remote_device_id'], primary['remote_port_id'])}" target="_blank" rel="noopener"><img class="graph-image" src="${createGraphURL(null, primary['remote_port_id'],"port_bits","-1d","yes")}"></a></div>`;
         }
         else {
-            html = `<div style="text-align:center;">${createLinkTitle(primary)}</div>`;
+            html = `<div style="font-size:18px;text-align:center;">${createLinkTitle(primary)}</div>`;
         }
 
         if (members.length <= 1) {
@@ -510,12 +519,12 @@ html, body, #fullscreen-map {
         let otherMembers = members.slice(1).map(member => {
             return `
                 <div style="margin-bottom:8px;">
-                    ${createLinkTitle(member)}<br>
-                    <small style="font-weight:normal;">
+                    ${createLinkTitle(member)}
+                    <div class="overlap-member-meta">
                         &nbsp; <a href="graphs/to=0/id=${member['local_port_id']}/type=port_bits/from=0/" target="_blank" rel="noopener">traffic</a>
                         &nbsp;|&nbsp; <a href=${createGraphHREF(member['local_device_id'], member['local_port_id'])} target="_blank" rel="noopener">${formatBps(member.speed)}</a>
                         &nbsp;|&nbsp; <a href=${createGraphHREF(member['local_device_id'], member['local_port_id'])} target="_blank" rel="noopener">${formatStatus(member.up)}</a>
-                    </small>
+                    </div>
                 </div>
             `;
         }).join('');
@@ -536,8 +545,7 @@ html, body, #fullscreen-map {
     function createMarkerHTML(device, device_id) { //"<a href=\"" +  + "\"><img src=\"" + device["icon"] + "\" width=\"32\" height=\"32\" alt=\"\"> " + device["sname"] + "</a>"
         return `<div class="device-popup">
             <div class="device-popup__title">
-                <a style="font-size:16px;"
-                   href="${device["url"]}"
+                <a href="${device["url"]}"
                    target="_blank"
                    rel="noopener">
                    ${html_chars(device["sname"] ?? device_id)}
@@ -677,7 +685,8 @@ html, body, #fullscreen-map {
                         var marker = L.marker(new L.LatLng(device["lat"],device["lng"]), {title: device["sname"], icon: icon, zIndexOffset: z_offset});
                         marker.deviceData = device; // --- ADDED
                         const marker_html = createMarkerHTML(device, device_id); // --- ADDED
-                        marker.bindPopup(marker_html, { className: 'marker-style' }); // --- UPDATED
+                        const smallTouchscreen = (window.matchMedia('(max-width: 768px)').matches && (window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window)); // --- ADDED
+                        marker.bindPopup(marker_html, { className: 'marker-style', autoPan: !smallTouchscreen }); // --- UPDATED
                         device_marker_cluster.addLayer(marker);
                         device_markers[device_id] = marker;
 
