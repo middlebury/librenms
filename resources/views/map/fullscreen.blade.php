@@ -37,6 +37,7 @@ Only leaflet map engine is currently supported
 
 @section('css')
 <style>
+  /* --- ADDED: styling !-- */
 html, body, #fullscreen-map {
    height: 100%;
    width: 100%;
