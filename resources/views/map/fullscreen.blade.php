@@ -208,12 +208,12 @@ html, body, #fullscreen-map {
       font-size: 15px;
     }
     .overlap-summary::before {
-      content: "▶";
+      content: "\25B6";
       font-size: 0.85em;
       line-height: 1;
     }
     details[open] > .overlap-summary::before {
-      content: "▼";
+      content: "\25BC";
     }
     .overlap-members-list {
       max-height: 7.5em;

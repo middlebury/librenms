@@ -178,12 +178,12 @@
     font-size: 15px;
 }
 #worldmap_widget-{{ $id }} .overlap-summary::before {
-    content: "▶";
+    content: "\25B6";
     font-size: 0.85em;
     line-height: 1;
 }
 #worldmap_widget-{{ $id }} details[open] > .overlap-summary::before {
-    content: "▼";
+    content: "\25BC";
 }
 #worldmap_widget-{{ $id }} .overlap-member {
   margin-bottom: 8px;
@@ -204,6 +204,9 @@
   justify-content: flex-start;
   text-align: left;
   font-size: 14px;
+}
+#worldmap_widget-{{ $id }} .leaflet-control-locate {
+  display: none !important;
 }
 /* !-- */
 </style>
@@ -730,6 +733,49 @@
                         populate_map_markers(map_id, group_radius, status, device_group);
 
                         // --- ADDED !--
+                        const initialView = {
+                            lat: map.getCenter().lat,
+                            lng: map.getCenter().lng,
+                            zoom: map.getZoom()
+                        };
+
+                        const ResetViewControl = L.Control.extend({
+                            options: { position: 'bottomright' },
+
+                            onAdd: function () {
+                                const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+
+                                container.style.backgroundColor = 'white';
+                                container.style.width = '52px';
+                                container.style.height = '52px';
+                                container.style.display = 'flex';
+                                container.style.alignItems = 'center';
+                                container.style.justifyContent = 'center';
+                                container.style.cursor = 'pointer';
+                                container.innerHTML = "\u{21BA}";
+                                container.style.fontSize = '26px';
+                                container.title = 'Reset view';
+
+                                L.DomEvent.disableClickPropagation(container);
+                                L.DomEvent.disableScrollPropagation(container);
+
+                                container.onclick = function () {
+                                    const map = get_map(map_id);
+                                    map.setView([initialView.lat, initialView.lng], initialView.zoom, { animate: true });
+                                    map.closePopup();
+                                    if (map.markerCluster) {
+                                        map.markerCluster.unspiderfy();
+                                    }
+                                };
+
+                                return container;
+
+                            }
+
+                        });
+
+                        map.addControl(new ResetViewControl());
+
                         if (enableGeoLinks) {
                             populate_map_links(map_id);
                             map.on('zoomend', __lnmsRescaleAllLinks);
