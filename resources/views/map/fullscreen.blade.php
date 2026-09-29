@@ -122,6 +122,16 @@ html, body, #fullscreen-map {
       /* -webkit-overflow-scrolling: touch; */
       margin: 8px !important;
     }
+    /* Size large window pop-ups according to the number of graphs */
+    .leaflet-popup.marker-style .leaflet-popup-content:has(.device-popup--1) {
+      width: min(300px, calc(100cqi - 32px)) !important;
+    }
+    .leaflet-popup.marker-style .leaflet-popup-content:has(.device-popup--2) {
+      width: min(600px, calc(100cqi - 32px)) !important;
+    }
+    .leaflet-popup.marker-style .leaflet-popup-content:has(.device-popup--3) {
+      width: min(900px, calc(100cqi - 32px)) !important;
+    }
     .leaflet-popup.marker-style .device-popup {
       width: 100%;
       max-width: 1200px;
@@ -136,6 +146,15 @@ html, body, #fullscreen-map {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
+    }
+    .leaflet-popup.marker-style .device-popup--1 .device-popup__graphs {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .leaflet-popup.marker-style .device-popup--2 .device-popup__graphs {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .leaflet-popup.marker-style .device-popup--3 .device-popup__graphs {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
     }
     .leaflet-popup.marker-style .device-popup__graph {
       min-width: 0;
@@ -166,6 +185,9 @@ html, body, #fullscreen-map {
       .leaflet-popup.marker-style .device-popup__graphs {
         grid-template-columns: 1fr;
       }
+    }
+    .leaflet-popup.marker-style .device-popup--1 .device-popup__graphs {
+      grid-template-columns: 1fr;
     }
 
     /* Link popup */
@@ -543,49 +565,99 @@ html, body, #fullscreen-map {
     }
 
     function createMarkerHTML(device, device_id) { //"<a href=\"" +  + "\"><img src=\"" + device["icon"] + "\" width=\"32\" height=\"32\" alt=\"\"> " + device["sname"] + "</a>"
-        return `<div class="device-popup">
-            <div class="device-popup__title">
-                <a href="${device["url"]}"
-                   target="_blank"
-                   rel="noopener">
-                   ${html_chars(device["sname"] ?? device_id)}
-                </a>
-            </div>
-
-            <div class="device-popup__graphs">
-
-                <div class="device-popup__graph">
-                    <div class="device-popup__graph-title">Device Traffic</div>
-                    <a class="device-popup__graph-link"
-                       href="graphs/device=${device_id}/type=device_bits/legend=no/"
-                       target="_blank" rel="noopener">
-                        <img class="graph-image"
-                             src="${createGraphURL(device_id, null, "device_bits", "-1d", "no", 400, 180)}">
+        if (device.icontitle === 'avaya') {
+            return `<div class="device-popup device-popup--1">
+                <div class="device-popup__title">
+                    <a href="${device["url"]}"
+                    target="_blank"
+                    rel="noopener">
+                    ${html_chars(device["sname"] ?? device_id)}
                     </a>
                 </div>
 
-                <div class="device-popup__graph">
-                    <div class="device-popup__graph-title">Processor Usage</div>
-                    <a class="device-popup__graph-link"
-                       href="device/device=${device_id}/tab=health/metric=processor/"
-                       target="_blank" rel="noopener">
-                        <img class="graph-image"
-                             src="${createGraphURL(device_id, null, "device_processor", "-1d", "no", 400, 180)}">
+                <div class="device-popup__graphs">
+
+                    <div class="device-popup__graph">
+                        <div class="device-popup__graph-title">Device Traffic</div>
+                        <a class="device-popup__graph-link"
+                        href="graphs/device=${device_id}/type=device_bits/legend=no/"
+                        target="_blank" rel="noopener">
+                            <img class="graph-image"
+                                src="${createGraphURL(device_id, null, "device_bits", "-1d", "no", 400, 180)}">
+                        </a>
+                    </div>
+
+                </div>
+            </div>`;
+        } else if (device.icontitle === 'ping') {
+            return `<div class="device-popup device-popup--1">
+                <div class="device-popup__title">
+                    <a href="${device["url"]}"
+                    target="_blank"
+                    rel="noopener">
+                    ${html_chars(device["sname"] ?? device_id)}
                     </a>
                 </div>
 
-                <div class="device-popup__graph">
-                    <div class="device-popup__graph-title">Memory Usage</div>
-                    <a class="device-popup__graph-link"
-                       href="device/device=${device_id}/tab=health/metric=mempool/"
-                       target="_blank" rel="noopener">
-                        <img class="graph-image"
-                             src="${createGraphURL(device_id, null, "device_mempool", "-1d", "no", 400, 180)}">
+                <div class="device-popup__graphs">
+
+                    <div class="device-popup__graph">
+                        <div class="device-popup__graph-title">ICMP Response</div>
+                        <a class="device-popup__graph-link"
+                        href="graphs/device=${device_id}/type=device_ping_perf/legend=no/"
+                        target="_blank" rel="noopener">
+                            <img class="graph-image"
+                                src="${createGraphURL(device_id, null, "device_ping_perf", "-1d", "no", 400, 180)}">
+                        </a>
+                    </div>
+
+                </div>
+            </div>`;
+        } else {
+            return `<div class="device-popup device-popup--3">
+                <div class="device-popup__title">
+                    <a href="${device["url"]}"
+                    target="_blank"
+                    rel="noopener">
+                    ${html_chars(device["sname"] ?? device_id)}
                     </a>
                 </div>
 
-            </div>
-        </div>`;
+                <div class="device-popup__graphs">
+
+                    <div class="device-popup__graph">
+                        <div class="device-popup__graph-title">Device Traffic</div>
+                        <a class="device-popup__graph-link"
+                        href="graphs/device=${device_id}/type=device_bits/legend=no/"
+                        target="_blank" rel="noopener">
+                            <img class="graph-image"
+                                src="${createGraphURL(device_id, null, "device_bits", "-1d", "no", 400, 180)}">
+                        </a>
+                    </div>
+
+                    <div class="device-popup__graph">
+                        <div class="device-popup__graph-title">Processor Usage</div>
+                        <a class="device-popup__graph-link"
+                        href="device/device=${device_id}/tab=health/metric=processor/"
+                        target="_blank" rel="noopener">
+                            <img class="graph-image"
+                                src="${createGraphURL(device_id, null, "device_processor", "-1d", "no", 400, 180)}">
+                        </a>
+                    </div>
+
+                    <div class="device-popup__graph">
+                        <div class="device-popup__graph-title">Memory Usage</div>
+                        <a class="device-popup__graph-link"
+                        href="device/device=${device_id}/tab=health/metric=mempool/"
+                        target="_blank" rel="noopener">
+                            <img class="graph-image"
+                                src="${createGraphURL(device_id, null, "device_mempool", "-1d", "no", 400, 180)}">
+                        </a>
+                    </div>
+
+                </div>
+            </div>`;
+        }
     }
 
     const iconCache = Object.create(null);

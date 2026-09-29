@@ -86,6 +86,16 @@
   /* -webkit-overflow-scrolling: touch; */
   margin: 8px !important;
 }
+/* Size large window pop-ups according to the number of graphs */
+#worldmap_widget-{{ $id }} .leaflet-popup.marker-style .leaflet-popup-content:has(.device-popup--1) {
+  width: min(300px, calc(100cqi - 32px)) !important;
+}
+#worldmap_widget-{{ $id }} .leaflet-popup.marker-style .leaflet-popup-content:has(.device-popup--2) {
+  width: min(600px, calc(100cqi - 32px)) !important;
+}
+#worldmap_widget-{{ $id }} .leaflet-popup.marker-style .leaflet-popup-content:has(.device-popup--3) {
+  width: min(900px, calc(100cqi - 32px)) !important;
+}
 #worldmap_widget-{{ $id }} .leaflet-popup.marker-style .device-popup {
   width: 100%;
   max-width: 1200px;
@@ -100,6 +110,15 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+#worldmap_widget-{{ $id }} .leaflet-popup.marker-style .device-popup--1 .device-popup__graphs {
+  grid-template-columns: minmax(0, 1fr);
+}
+#worldmap_widget-{{ $id }} .leaflet-popup.marker-style .device-popup--2 .device-popup__graphs {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+#worldmap_widget-{{ $id }} .leaflet-popup.marker-style .device-popup--3 .device-popup__graphs {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 #worldmap_widget-{{ $id }} .leaflet-popup.marker-style .device-popup__graph {
   min-width: 0;
@@ -127,6 +146,9 @@
   #worldmap_widget-{{ $id }} .leaflet-popup.marker-style .device-popup__graphs {
     grid-template-columns: 1fr;
   }
+}
+#worldmap_widget-{{ $id }} .leaflet-popup.marker-style .device-popup--1 .device-popup__graphs {
+    grid-template-columns: 1fr;
 }
 
 /* Link popup */
@@ -411,33 +433,67 @@
         }
 
         function createMarkerHTML(device, device_id) {
-            return `<div class="device-popup">
-                <div class="device-popup__title">
-                    <span>${html_chars(device["sname"] ?? device_id)}</span>
-                </div>
-
-                <div class="device-popup__graphs">
-
-                    <div class="device-popup__graph">
-                        <div class="device-popup__graph-title">Device Traffic</div>
-                        <img class="graph-image"
-                            src="${createGraphURL(device_id, null, "device_bits", "-1d", "no", 400, 180)}">
+            if (device.icontitle === 'avaya') {
+                return `<div class="device-popup device-popup--1">
+                    <div class="device-popup__title">
+                        <span>${html_chars(device["sname"] ?? device_id)}</span>
                     </div>
 
-                    <div class="device-popup__graph">
-                        <div class="device-popup__graph-title">Processor Usage</div>
-                        <img class="graph-image"
-                            src="${createGraphURL(device_id, null, "device_processor", "-1d", "no", 400, 180)}">
+                    <div class="device-popup__graphs">
+
+                        <div class="device-popup__graph">
+                            <div class="device-popup__graph-title">Device Traffic</div>
+                            <img class="graph-image"
+                                src="${createGraphURL(device_id, null, "device_bits", "-1d", "no", 400, 180)}">
+                        </div>
+
+                    </div>
+                </div>`;
+            } else if (device.icontitle === 'ping') {
+                return `<div class="device-popup device-popup--1">
+                    <div class="device-popup__title">
+                        <span>${html_chars(device["sname"] ?? device_id)}</span>
                     </div>
 
-                    <div class="device-popup__graph">
-                        <div class="device-popup__graph-title">Memory Usage</div>
-                        <img class="graph-image"
-                            src="${createGraphURL(device_id, null, "device_mempool", "-1d", "no", 400, 180)}">
+                    <div class="device-popup__graphs">
+
+                        <div class="device-popup__graph">
+                            <div class="device-popup__graph-title">ICMP Response</div>
+                            <img class="graph-image"
+                                src="${createGraphURL(device_id, null, "device_ping_perf", "-1d", "no", 400, 180)}">
+                        </div>
+
+                    </div>
+                </div>`;
+            } else {
+                return `<div class="device-popup">
+                    <div class="device-popup__title">
+                        <span>${html_chars(device["sname"] ?? device_id)}</span>
                     </div>
 
-                </div>
-            </div>`;
+                    <div class="device-popup__graphs">
+
+                        <div class="device-popup__graph">
+                            <div class="device-popup__graph-title">Device Traffic</div>
+                            <img class="graph-image"
+                                src="${createGraphURL(device_id, null, "device_bits", "-1d", "no", 400, 180)}">
+                        </div>
+
+                        <div class="device-popup__graph">
+                            <div class="device-popup__graph-title">Processor Usage</div>
+                            <img class="graph-image"
+                                src="${createGraphURL(device_id, null, "device_processor", "-1d", "no", 400, 180)}">
+                        </div>
+
+                        <div class="device-popup__graph">
+                            <div class="device-popup__graph-title">Memory Usage</div>
+                            <img class="graph-image"
+                                src="${createGraphURL(device_id, null, "device_mempool", "-1d", "no", 400, 180)}">
+                        </div>
+
+                    </div>
+                </div>`;
+            }
         }
 
         const __lnmsLinkMinWeight = 2;
