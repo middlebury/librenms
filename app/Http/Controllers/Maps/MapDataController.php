@@ -514,6 +514,10 @@ class MapDataController extends Controller
 
             $device_list[$device->device_id] = [
                 'id' => $device->device_id,
+                // --- ADDED: device ip and hostname for display !--
+                'ip' => $device->ip,
+                'hostname' => $device->hostname,
+                // !--
                 'icon' => $device->icon,
                 'typeIcon' => $deviceTypes->get($device->type, 'server'),
                 'icontitle' => $device->icon ? str_replace(['.svg', '.png'], '', basename((string) $device->icon)) : $device->os,
