@@ -37,7 +37,7 @@ Only leaflet map engine is currently supported
 
 @section('css')
 <style>
-  /* --- ADDED: styling !-- */
+/* --- ADDED: styling !-- */
 html, body, #fullscreen-map {
    height: 100%;
    width: 100%;
@@ -139,7 +139,13 @@ html, body, #fullscreen-map {
     }
     .leaflet-popup.marker-style .device-popup__title {
       text-align: center;
+      margin-bottom: 2px;
+    }
+    .leaflet-popup.marker-style .device-popup__ip {
+      text-align: center;
       margin-bottom: 10px;
+      font-size: 12px !important;
+      font-weight: normal !important;
     }
     /* Device marker graph grid */
     .leaflet-popup.marker-style .device-popup__graphs {
@@ -253,7 +259,7 @@ html, body, #fullscreen-map {
       pointer-events: none;
       opacity: 0.85;
     }
-  /* !-- */
+/* !-- */
 </style>
 @endsection
 
@@ -574,13 +580,16 @@ html, body, #fullscreen-map {
                     ${html_chars(device["sname"] ?? device_id)}
                     </a>
                 </div>
+                <div class="device-popup__ip">
+                    ${html_chars((device["ip"] ?? device["hostname"]) ?? "no hostname or IP found")}
+                </div>
 
                 <div class="device-popup__graphs">
 
                     <div class="device-popup__graph">
                         <div class="device-popup__graph-title">Device Traffic</div>
                         <a class="device-popup__graph-link"
-                        href="graphs/device=${device_id}/type=device_bits/legend=no/"
+                        href="graphs/device=${device_id}/type=device_bits/legend=yes/"
                         target="_blank" rel="noopener">
                             <img class="graph-image"
                                 src="${createGraphURL(device_id, null, "device_bits", "-1d", "no", 400, 180)}">
@@ -598,13 +607,16 @@ html, body, #fullscreen-map {
                     ${html_chars(device["sname"] ?? device_id)}
                     </a>
                 </div>
+                <div class="device-popup__ip">
+                    ${html_chars((device["ip"] ?? device["hostname"]) ?? "no hostname or IP found")}
+                </div>
 
                 <div class="device-popup__graphs">
 
                     <div class="device-popup__graph">
                         <div class="device-popup__graph-title">ICMP Response</div>
                         <a class="device-popup__graph-link"
-                        href="graphs/device=${device_id}/type=device_ping_perf/legend=no/"
+                        href="graphs/device=${device_id}/type=device_ping_perf/legend=yes/"
                         target="_blank" rel="noopener">
                             <img class="graph-image"
                                 src="${createGraphURL(device_id, null, "device_ping_perf", "-1d", "no", 400, 180)}">
@@ -621,6 +633,10 @@ html, body, #fullscreen-map {
                     rel="noopener">
                     ${html_chars(device["sname"] ?? device_id)}
                     </a>
+                </div>
+
+                <div class="device-popup__ip">
+                    ${html_chars((device["ip"] ?? device["hostname"]) ?? "no hostname or IP found")}
                 </div>
 
                 <div class="device-popup__graphs">
@@ -728,8 +744,20 @@ html, body, #fullscreen-map {
         $.post( '{{ route('maps.getdevices') }}', {disabled: 0, location_valid: 1, disabled_alerts: {{$netmap_include_disabled_alerts}}, group: device_group})
 @endif
             .done(function( data ) {
-                $.each( data, function( device_id, device ) {
+                // --- ADDED: sort devices alphabetically for markers !--
+                const sortedDevices = Object.entries(data).sort(([, deviceA], [, deviceB]) =>
+                    String(deviceA.sname ?? '').localeCompare(
+                        String(deviceB.sname ?? ''),
+                        undefined,
+                        {
+                            numeric: true,
+                            sensitivity: 'base'
+                        }
+                    )
+                );
+                // !--
 
+                sortedDevices.forEach(([device_id, device]) => { // --- UPDATED (device sorting)
                     const icon = getDeviceIcon(device); // --- UPDATED
 
                     var z_offset = 0;
@@ -771,7 +799,7 @@ html, body, #fullscreen-map {
                         });
                     }
                     devices[device_id] = true;
-                })
+                }); // --- UPDATED (device sorting)
                 $("#countdown").css("border", "1px solid green");
 
                 // Remove any devices that have disappeared

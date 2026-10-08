@@ -255,68 +255,79 @@
                 dataType: "json",
                 data: { location_valid: 1, disabled: 0, disabled_alerts: disabled_alerts, statuses: status, group: device_group },
                 success: function (data) {
-                    var markers = Object.values(data).map((device) => {
-                        // --- UPDATED !--
-                        const markerColor = device.status ? 'green' : (device.maintenance == 1 ? 'blue' : 'red');
-                        const isNetworkWired = device.typeIcon === 'network-wired' && device.icon;
-                        if (isNetworkWired) {
-                             var deviceMarker = L.divIcon({
-                                className: `awesome-marker awesome-marker-icon-${markerColor}`,
-                                html: `
-                                <div style="
-                                    position:absolute;
-                                    top:6px; left:6px; right:6px;
-                                    width:22px; height:22px;
-                                    margin:0 auto;
-                                    border-radius:50%;
-                                    overflow:hidden;
-                                    display:flex; align-items:center; justify-content:center;">
-                                    <img src="${device.icon}" alt="" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">
-                                </div>
-                                `,
-                                iconSize: [35, 45],
-                                iconAnchor: [17, 42],
-                                popupAnchor: [1, -32],
+                    // --- UPDATED !--
+                    var markers = Object.values(data)
+                        .sort((deviceA, deviceB) =>
+                            String(deviceA.sname ?? deviceA.hostname ?? '').localeCompare(
+                                String(deviceB.sname ?? deviceB.hostname ?? ''),
+                                undefined,
+                                {
+                                    numeric: true,
+                                    sensitivity: 'base'
+                                }
+                            )
+                        )
+                        .map((device) => {
+                            const markerColor = device.status ? 'green' : (device.maintenance == 1 ? 'blue' : 'red');
+                            const isNetworkWired = device.typeIcon === 'network-wired' && device.icon;
+                            if (isNetworkWired) {
+                                var deviceMarker = L.divIcon({
+                                    className: `awesome-marker awesome-marker-icon-${markerColor}`,
+                                    html: `
+                                    <div style="
+                                        position:absolute;
+                                        top:6px; left:6px; right:6px;
+                                        width:22px; height:22px;
+                                        margin:0 auto;
+                                        border-radius:50%;
+                                        overflow:hidden;
+                                        display:flex; align-items:center; justify-content:center;">
+                                        <img src="${device.icon}" alt="" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">
+                                    </div>
+                                    `,
+                                    iconSize: [35, 45],
+                                    iconAnchor: [17, 42],
+                                    popupAnchor: [1, -32],
+                                });
+                            } else {
+                                var deviceMarker = L.AwesomeMarkers.icon({
+                                    icon: device.typeIcon,
+                                    markerColor,
+                                    prefix: 'fa',
+                                    iconColor: 'white'
+                                });
+                            }
+                            // !--
+
+                            var markerData = {
+                                title: device.sname,
+                                icon: deviceMarker,
+                            };
+
+                            if (device.status) { // up
+                                markerData.zIndexOffset = 0;
+                            } else if (device.maintenance == 1) { // down + maintenance
+                                markerData.zIndexOffset = 10000;
+                            } else { // down
+                                markerData.zIndexOffset = 5000;
+                            }
+
+                            var marker = L.marker(new L.LatLng(device.lat, device.lng), markerData);
+                            marker.deviceData = device; // --- ADDED
+                            const marker_html = createMarkerHTML(device, device["id"]); // --- ADDED
+                            // --- UPDATED !--
+                            const widgetWidth = document.getElementById(map_id)?.clientWidth || 600;
+                            const popupMaxWidth = Math.max(260, widgetWidth - 24);
+                            marker.bindPopup(marker_html, {
+                                className: 'marker-style',
+                                maxWidth: popupMaxWidth,
+                                autoPan: true,
+                                keepInView: true,
+                                autoPanPadding: [12, 12]
                             });
-                        } else {
-                            var deviceMarker = L.AwesomeMarkers.icon({
-                                icon: device.typeIcon,
-                                markerColor,
-                                prefix: 'fa',
-                                iconColor: 'white'
-                            });
-                        }
-                        // !--
-
-                        var markerData = {
-                            title: device.sname,
-                            icon: deviceMarker,
-                        };
-
-                        if (device.status) { // up
-                            markerData.zIndexOffset = 0;
-                        } else if (device.maintenance == 1) { // down + maintenance
-                            markerData.zIndexOffset = 10000;
-                        } else { // down
-                            markerData.zIndexOffset = 5000;
-                        }
-
-                        var marker = L.marker(new L.LatLng(device.lat, device.lng), markerData);
-                        marker.deviceData = device; // --- ADDED
-                        const marker_html = createMarkerHTML(device, device["id"]); // --- ADDED
-                        // --- UPDATED !--
-                        const widgetWidth = document.getElementById(map_id)?.clientWidth || 600;
-                        const popupMaxWidth = Math.max(260, widgetWidth - 24);
-                        marker.bindPopup(marker_html, {
-                            className: 'marker-style',
-                            maxWidth: popupMaxWidth,
-                            autoPan: true,
-                            keepInView: true,
-                            autoPanPadding: [12, 12]
+                            // !--
+                            return marker;
                         });
-                        // !--
-                        return marker;
-                    });
 
                     var map = get_map(map_id);
                     if (! map.markerCluster) {
