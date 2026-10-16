@@ -150,6 +150,10 @@
 #worldmap_widget-{{ $id }} .leaflet-popup.marker-style .device-popup--1 .device-popup__graphs {
     grid-template-columns: 1fr;
 }
+/* Spiderfy animation on non-custom markers */
+#worldmap_widget-{{ $id }} .leaflet-cluster-anim .awesome-marker {
+    transition: transform 0.3s ease-out, opacity 0.3s ease-in;
+}
 
 /* Link popup */
 #worldmap_widget-{{ $id }} .leaflet-popup.link-style .leaflet-popup-content,
