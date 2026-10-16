@@ -260,7 +260,7 @@ html, body, #fullscreen-map {
       font-size: 14px;
     }
     .link-overlap-count {
-      pointer-events: none;
+      cursor: pointer;
       opacity: 0.85;
     }
 /* !-- */
@@ -401,7 +401,14 @@ html, body, #fullscreen-map {
             const marker = L.marker(midpoint, {
                 pane: 'linkLabelsPane',
                 icon: makeOverlapIcon(count, bgColor),
-                interactive: false,
+                interactive: true,
+                keyboard: false,
+            });
+            marker.on('click', function () {
+                const line = link_markers[link_id];
+                if (line && line.getPopup()) {
+                    line.openPopup(marker.getLatLng());
+                }
             });
             marker.addTo(device_map);
             link_overlap_labels[link_id] = marker;

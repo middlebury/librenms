@@ -222,7 +222,7 @@
     padding-right: 4px;
 }
 #worldmap_widget-{{ $id }} .link-overlap-count {
-    pointer-events: none;
+    cursor: pointer;
     opacity: 0.85;
 }
 #worldmap_widget-{{ $id }} .overlap-members-list .link-popup__title,
@@ -573,7 +573,14 @@
             } else {
                 const marker = L.marker(midpoint, {
                     icon: makeOverlapIcon(count, bgColor),
-                    interactive: false,
+                    interactive: true,
+                    keyboard: false,
+                });
+                marker.on('click', function () {
+                    const line = link_markers[link_id];
+                    if (line && line.getPopup()) {
+                        line.openPopup(marker.getLatLng());
+                    }
                 });
                 marker.addTo(map);
                 link_overlap_labels[link_id] = marker;
@@ -780,6 +787,10 @@
                         if (!(id in data)) {
                             map.removeLayer(link_markers[id]);
                             delete link_markers[id];
+                            if (link_overlap_labels[id]) {
+                                map.removeLayer(link_overlap_labels[id]);
+                                delete link_overlap_labels[id];
+                            }
                         }
                     });
                     // --- ADDED !--
