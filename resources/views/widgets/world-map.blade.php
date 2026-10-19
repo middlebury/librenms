@@ -235,6 +235,18 @@
   display: none !important;
 }
 
+/* Adjust refresh button by color mode */
+#worldmap_widget-{{ $id }} .wm-reset-view {
+  background: var(--wm-popup-bg);
+  color: var(--wm-popup-text);
+}
+#worldmap_widget-{{ $id }} .wm-reset-view:hover {
+  filter: brightness(0.92);
+}
+#worldmap_widget-{{ $id }}[data-theme="dark"] .wm-reset-view:hover {
+  filter: brightness(1.25);
+}
+
 /* Spiderfy animation for AwesomeMarkers (they lack .leaflet-marker-icon, which markercluster's transition targets) */
 #worldmap_widget-{{ $id }} .leaflet-cluster-anim .awesome-marker {
   transition: transform 0.3s ease-out, opacity 0.3s ease-in;
@@ -250,6 +262,7 @@
   color: var(--wm-popup-text);
   border-radius: 10px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  margin-bottom: 25px;
 }
 #worldmap_widget-{{ $id }} .link-speed-filter__chip {
   display: flex;
@@ -867,7 +880,22 @@
             }
         }
 
-        // Factory: L doesn't exist until loadjs has loaded leaflet.js, so the class is built on demand
+        let linkSpeedFilterControl = null;
+
+        // Only show the filter when the server returned at least one link
+        function syncLinkSpeedFilterControl(map) {
+            const hasLinks = Object.keys(geoLinkData).length > 0;
+            if (hasLinks && !linkSpeedFilterControl) {
+                linkSpeedFilterControl = createLinkSpeedFilterControl();
+                map.addControl(linkSpeedFilterControl);
+            } else if (!hasLinks && linkSpeedFilterControl) {
+                map.removeControl(linkSpeedFilterControl);
+                linkSpeedFilterControl = null;
+                linkSpeedFilterEl = null;
+            }
+        }
+
+        // L doesn't exist until loadjs has loaded leaflet.js, so the class is built on demand
         function createLinkSpeedFilterControl() {
             const LinkSpeedFilterControl = L.Control.extend({
                 options: { position: 'bottomleft' },
@@ -927,6 +955,7 @@
                     geoLinkData = data || Object.create(null);
                     renderGeoLinks();
                     const map = get_map(map_id);
+                    syncLinkSpeedFilterControl(map);
                     if (map.markerCluster && typeof map.markerCluster.refreshClusters === 'function') {
                         map.markerCluster.refreshClusters();
                     }
@@ -958,9 +987,8 @@
                             options: { position: 'bottomright' },
 
                             onAdd: function () {
-                                const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+                                const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control wm-reset-view');
 
-                                container.style.backgroundColor = 'white';
                                 container.style.width = '52px';
                                 container.style.height = '52px';
                                 container.style.display = 'flex';
@@ -996,7 +1024,6 @@
                             map.createPane('linksDownPane').style.zIndex = 410; // down links above up links
                             map.createPane('linkLabelsPane').style.zIndex = 450;
                             map.getPane('linkLabelsPane').style.pointerEvents = 'none';
-                            map.addControl(createLinkSpeedFilterControl());
                             populate_map_links(map_id);
                             map.on('zoomend', __lnmsRescaleAllLinks);
                         }
