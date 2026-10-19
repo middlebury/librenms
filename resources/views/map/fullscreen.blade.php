@@ -66,16 +66,20 @@ html, body, #fullscreen-map {
       --wm-graph-side-padding: 2px;
       --wm-graph-title-size: 14px;
       --wm-graph-title-margin: 0 0 6px 0;
+
+      --wm-filter-selected: #1a56b8;
     }
 
     #fullscreen-map[data-theme="dark"] {
       --wm-popup-bg: #1d1d1ddd;
       --wm-popup-text: #d3d3d3;
+      --wm-filter-selected: #5b9bff;
     }
 
     #fullscreen-map[data-theme="light"] {
       --wm-popup-bg: #f2f2f2ee;
       --wm-popup-text: #1d1d1d;
+      --wm-filter-selected: #1a56b8;
     }
 
     /* Popup content */
@@ -195,10 +199,6 @@ html, body, #fullscreen-map {
     .leaflet-popup.marker-style .device-popup--1 .device-popup__graphs {
       grid-template-columns: 1fr;
     }
-    /* Spiderfy animation on non-custom markers */
-    .leaflet-cluster-anim .awesome-marker {
-      transition: transform 0.3s ease-out, opacity 0.3s ease-in;
-    }
 
     /* Link popup */
     .leaflet-popup.link-style .leaflet-popup-content,
@@ -262,6 +262,57 @@ html, body, #fullscreen-map {
     .link-overlap-count {
       cursor: pointer;
       opacity: 0.85;
+    }
+
+    /* Spiderfy animation for AwesomeMarkers (they lack .leaflet-marker-icon, which markercluster's transition targets) */
+    .leaflet-cluster-anim .awesome-marker {
+      transition: transform 0.3s ease-out, opacity 0.3s ease-in;
+    }
+
+    /* Link speed filter */
+    .link-speed-filter {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 6px;
+      background: var(--wm-popup-bg);
+      color: var(--wm-popup-text);
+      border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+    }
+    .link-speed-filter__chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 70px;
+      padding: 3px 10px 3px 6px;
+      border: 1px solid rgba(128, 128, 128, 0.45);
+      border-radius: 999px;
+      background: transparent;
+      color: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.4;
+      cursor: pointer;
+    }
+    .link-speed-filter__chip.is-active {
+      border-color: var(--wm-filter-selected);
+      box-shadow: inset 0 0 0 1px var(--wm-filter-selected);
+    }
+    .link-speed-filter__chip:focus-visible {
+      outline: 2px solid var(--wm-filter-selected);
+      outline-offset: 2px;
+    }
+    .link-speed-filter__dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      flex: none;
+    }
+    @media (max-width: 899.98px) {
+      .link-speed-filter {
+        display: none !important;
+      }
     }
 /* !-- */
 </style>
@@ -336,8 +387,9 @@ html, body, #fullscreen-map {
     var link_overlap_labels = Object.create(null); // --- ADDED
 
     // --- ADDED: pane for overlapping link labels, network link line width scaling with zoom level, URL and graph builders, device icon cache !--
-    device_map.createPane('linkLabelsPane');
-    device_map.getPane('linkLabelsPane').style.zIndex = 450;
+    device_map.createPane('linksUpPane').style.zIndex = 400;
+    device_map.createPane('linksDownPane').style.zIndex = 410; // down links above up links
+    device_map.createPane('linkLabelsPane').style.zIndex = 450;
     device_map.getPane('linkLabelsPane').style.pointerEvents = 'none';
 
     const __lnmsLinkMinWeight = 2;
@@ -728,6 +780,184 @@ html, body, #fullscreen-map {
     }
     // !--
 
+    // --- ADDED: link speed filter + client-side member filtering / primary selection !--
+    const geoLinksEnabled = {{ ($show_netmap && $netmap_source == 'xdp') ? 'true' : 'false' }};
+
+    const LINK_SPEED_BUCKETS = [
+        { key: '1G',   label: '<10G', min: 0,            color: getSpeedColor(0) },
+        { key: '10G',  label: '10G',  min: 10000000000,  color: getSpeedColor(10e9) },
+        { key: '25G',  label: '25G',  min: 25000000000,  color: getSpeedColor(25e9) },
+        { key: '40G',  label: '40G',  min: 40000000000,  color: getSpeedColor(40e9) },
+        { key: '100G', label: '100G', min: 100000000000, color: getSpeedColor(100e9) },
+    ];
+    const linkSpeedVisible = Object.create(null);
+    LINK_SPEED_BUCKETS.forEach(({ key }) => { linkSpeedVisible[key] = true; });
+    let linkSpeedFilterEl = null;
+    let geoLinkData = Object.create(null);
+
+    function getSpeedBucket(bps) {
+        const n = Number(bps || 0);
+        for (let i = LINK_SPEED_BUCKETS.length - 1; i >= 0; i--) {
+            if (n >= LINK_SPEED_BUCKETS[i].min) return LINK_SPEED_BUCKETS[i].key;
+        }
+        return LINK_SPEED_BUCKETS[0].key;
+    }
+
+    function compareLinkMembers(a, b) {
+        if (!!a.up !== !!b.up) {
+            return a.up ? 1 : -1; // down first
+        }
+        return Number(b.speed || 0) - Number(a.speed || 0); // then highest speed
+    }
+
+    function getVisibleMembers(link) {
+        const members = Array.isArray(link.members) && link.members.length ? link.members : [link];
+        return members
+            .filter(m => linkSpeedVisible[getSpeedBucket(m.speed)])
+            .sort(compareLinkMembers);
+    }
+
+    // Mirrors MapDataController::linkSpeedWidth()
+    function linkSpeedWidth(bps) {
+        const s = Number(bps || 0) / 10000000;
+        if (!Number.isFinite(s) || s < 1) {
+            return 1;
+        }
+        return String(Math.round(s)).length * 2;
+    }
+
+    function renderGeoLinks() {
+        if (!geoLinksEnabled) {
+            return; // never touch dependency ("depends") lines
+        }
+        const rendered = Object.create(null);
+
+        Object.entries(geoLinkData).forEach(([link_id, link]) => {
+            const members = getVisibleMembers(link);
+            if (!members.length) {
+                return; // every member filtered out; removed below
+            }
+
+            const primary = members[0];
+            const isUp = !!primary.up;
+            const pane = isUp ? 'linksUpPane' : 'linksDownPane';
+            const color = isUp ? primary.color : '#e40606';
+            const width = linkSpeedWidth(members.reduce((sum, m) => sum + Number(m.speed || 0), 0));
+
+            const tip = (primary.local_name && primary.remote_name)
+                ? `${primary.local_name} ${arrow} ${primary.remote_name}`
+                : `${link.local_lat},${link.local_lng} ${arrow} ${link.remote_lat},${link.remote_lng}`;
+            const linkStyle = isUp
+                ? { color, weight: width, opacity: __lnmsLinkOpacity, smoothFactor: 1, dashArray: '' }
+                : { color, weight: width, opacity: 0.9, smoothFactor: 1, dashArray: '6,6' };
+            const latlng = [
+                new L.LatLng(link.local_lat, link.local_lng),
+                new L.LatLng(link.remote_lat, link.remote_lng),
+            ];
+            const popup_html = createLinkHTML({ ...link, members });
+
+            let line = link_markers[link_id];
+
+            // A layer's pane can't change after creation: rebuild if up/down state flipped
+            if (line && line.options.pane !== pane) {
+                link_layer.removeLayer(line);
+                delete link_markers[link_id];
+                line = null;
+            }
+
+            if (line) {
+                line.setLatLngs(latlng).setStyle(linkStyle);
+                line.setTooltipContent(tip);
+                line.setPopupContent(popup_html);
+            } else {
+                line = new L.Polyline(latlng, { ...linkStyle, pane });
+                line.bindTooltip(tip, { className: "leaflet-link-tooltip", sticky: true, opacity: 0.9 });
+                line.bindPopup(popup_html, { className: 'link-style' });
+                link_markers[link_id] = line;
+                link_layer.addLayer(line);
+            }
+
+            __lnmsSetLinkBase(line, width);
+            __lnmsRescaleLink(line);
+
+            const sameLocation = link.local_lat === link.remote_lat && link.local_lng === link.remote_lng;
+            updateOverlapLabel(link_id, latlng, sameLocation ? 1 : members.length, color);
+
+            rendered[link_id] = true;
+        });
+
+        // Remove lines/badges that are filtered out or no longer returned by the server
+        for (const link_id in link_markers) {
+            if (!(link_id in rendered)) {
+                link_layer.removeLayer(link_markers[link_id]);
+                delete link_markers[link_id];
+            }
+        }
+        for (const link_id in link_overlap_labels) {
+            if (!(link_id in rendered)) {
+                device_map.removeLayer(link_overlap_labels[link_id]);
+                delete link_overlap_labels[link_id];
+            }
+        }
+    }
+
+    function setLinkSpeedVisible(key, visible, render = true) {
+        linkSpeedVisible[key] = visible;
+        const chip = linkSpeedFilterEl?.querySelector(`[data-speed="${key}"]`);
+        if (chip) {
+            chip.classList.toggle('is-active', visible);
+            chip.setAttribute('aria-pressed', String(visible));
+        }
+        if (render) {
+            renderGeoLinks();
+        }
+    }
+
+    const LinkSpeedFilterControl = L.Control.extend({
+        options: { position: 'bottomleft' },
+        onAdd: function () {
+            const container = L.DomUtil.create('div', 'link-speed-filter leaflet-control');
+            container.setAttribute('role', 'group');
+            container.setAttribute('aria-label', 'Filter links by speed');
+
+            LINK_SPEED_BUCKETS.forEach(({ key, label, color }) => {
+                const chip = L.DomUtil.create('button', 'link-speed-filter__chip', container);
+                chip.type = 'button';
+                chip.dataset.speed = key;
+                chip.classList.toggle('is-active', linkSpeedVisible[key]);
+                chip.setAttribute('aria-pressed', String(linkSpeedVisible[key]));
+
+                const dot = L.DomUtil.create('span', 'link-speed-filter__dot', chip);
+                dot.style.background = color;
+                chip.appendChild(document.createTextNode(label)); // text node so "<10G" stays literal
+
+                L.DomEvent.on(chip, 'click', function (e) {
+                    L.DomEvent.stop(e);
+                    setLinkSpeedVisible(key, !linkSpeedVisible[key]);
+                });
+            });
+
+            L.DomEvent.disableClickPropagation(container);
+            L.DomEvent.disableScrollPropagation(container);
+            linkSpeedFilterEl = container;
+            return container;
+        },
+    });
+
+    if (geoLinksEnabled) {
+        device_map.addControl(new LinkSpeedFilterControl());
+
+        // Control is hidden below 900px: don't leave links hidden with no way to restore them
+        const linkFilterSmallScreen = window.matchMedia('(max-width: 899.98px)');
+        linkFilterSmallScreen.addEventListener('change', function () {
+            if (linkFilterSmallScreen.matches) {
+                LINK_SPEED_BUCKETS.forEach(({ key }) => setLinkSpeedVisible(key, true, false));
+                renderGeoLinks();
+            }
+        });
+    }
+    // !--
+
     function checkParentLink(device, parent) {
         const line_id = "dev." + device["id"] + "." + parent["id"]; // --- UPDATED
         if(line_id in link_markers) {
@@ -841,123 +1071,11 @@ html, body, #fullscreen-map {
 @if($show_netmap && $netmap_source == 'xdp')
         $.post( '{{ route('maps.getgeolinks') }}', {link_type: '{{$netmap_source}}', group: device_group})
             .done(function( data ) {
-                $.each( data, function( link_id, link ) {
-                    // --- ADDED: styling - links up/down, tooltips !--
-                    const tip = (link['local_name'] && link['remote_name']) ? `${link['local_name']} ${arrow} ${link['remote_name']}` : `${link['local_lat']},${link['local_lng']} ${arrow} ${link['remote_lat']},${link['remote_lng']}`;
-                    const isUp = !!link['up'];
-                    const downDash  = '6,6'; // dashed line pattern
-                    const linkStyle = isUp
-                        ? {
-                            color: link['color'],
-                            weight: link['width'],
-                            opacity: __lnmsLinkOpacity,
-                            smoothFactor: 1,
-                            dashArray: '',
-                        }
-                        : {
-                            color: '#e40606',
-                            weight: link['width'],
-                            opacity: 0.9,
-                            smoothFactor: 1,
-                            dashArray: downDash,
-                        };
-                    const latlng = [
-                        new L.LatLng(link['local_lat'],  link['local_lng']),
-                        new L.LatLng(link['remote_lat'], link['remote_lng'])
-                    ];
-                    // !--
-                    if(link_id in link_markers) {
-                        const currentLink = link_markers[link_id]; // --- ADDED
-
-                        currentLink.setLatLngs(latlng).setStyle(linkStyle); // --- UPDATED
-
-                        // --- ADDED !--
-                        if (currentLink.getTooltip()) {
-                            currentLink.setTooltipContent(tip);
-                        } else {
-                            currentLink.bindTooltip(tip, { className: "leaflet-link-tooltip", sticky: true, opacity: 0.9 });
-                        }
-
-                        const popup_html = createLinkHTML(link);
-                        if (currentLink.getPopup()) {
-                            currentLink.setPopupContent(popup_html);
-                        } else {
-                            currentLink.bindPopup(popup_html, { className: 'link-style' });
-                        }
-
-                        __lnmsSetLinkBase(currentLink, link['width']);
-                        __lnmsRescaleLink(currentLink);
-
-                        if (!isUp) {
-                            currentLink.bringToFront();
-                        } else {
-                            currentLink.bringToBack();
-                        }
-
-                        const labelColor = isUp ? link['color'] : '#e40606';
-                        const overlapCount = Array.isArray(link.members) ? link.members.length : 1;
-                        const sameLocation = link['local_lat'] === link['remote_lat'] && link['local_lng'] === link['remote_lng'];
-                        if (!sameLocation) {
-                            updateOverlapLabel(link_id, latlng, overlapCount, labelColor);
-                        } else {
-                            updateOverlapLabel(link_id, latlng, 1, labelColor);
-                        }
-                        // !--
-
-                        links[link_id] = true;
-                    } else {
-                        var line = new L.Polyline(latlng, linkStyle); // --- UPDATED
-
-                        link_markers[link_id] = line; // --- MOVED before scaling
-
-                        // --- ADDED !--
-                        line.bindTooltip(tip, { className: "leaflet-link-tooltip", sticky: true, opacity: 0.9 });
-
-                        const popup_html = createLinkHTML(link);
-                        line.bindPopup(popup_html, { className: 'link-style' });
-
-                        __lnmsSetLinkBase(line, link['width']);
-                        __lnmsRescaleLink(line);
-                        // !--
-
-                        link_layer.addLayer(line); // --- UPDATED
-
-                        // --- ADDED !--
-                        if (!isUp) {
-                            line.bringToFront();
-                        } else {
-                            line.bringToBack();
-                        }
-
-                        const labelColor = isUp ? link['color'] : '#e40606';
-                        const overlapCount = Array.isArray(link.members) ? link.members.length : 1;
-                        const sameLocation = link['local_lat'] === link['remote_lat'] && link['local_lng'] === link['remote_lng'];
-                        if (!sameLocation) {
-                            updateOverlapLabel(link_id, latlng, overlapCount, labelColor);
-                        } else {
-                            updateOverlapLabel(link_id, latlng, 1, labelColor);
-                        }
-                        // !--
-
-                        links[link_id] = true;
-                   }
-                })
+                // --- UPDATED: store response, render from filter state !--
+                geoLinkData = data || Object.create(null);
+                renderGeoLinks();
+                // !--
                 $("#countdown").css("border", "1px solid green");
-
-                // Remove any links that have disappeared
-                $.each( link_markers, function( link_id, line ) {
-                    if(! (link_id in links)) {
-                        link_layer.removeLayer(line); // --- UPDATED
-                        delete link_markers[link_id]; // --- ADDED
-
-                        // --- ADDED !--
-                        if (link_overlap_labels[link_id]) {
-                            device_map.removeLayer(link_overlap_labels[link_id]);
-                            delete link_overlap_labels[link_id];
-                        }
-                        // !--
-                    }
-                });
             })
             .fail(function() {
                 $("#countdown").css("border", "1px solid red");
