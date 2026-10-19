@@ -316,6 +316,63 @@
         const enableGeoLinks = Boolean(show_netmap) && String(netmap_source).trim().toLowerCase() === 'xdp';
         // !--
 
+        // --- ADDED: persistent device markers, updated in place each refresh instead of rebuilt (same approach as the fullscreen map) !--
+        const device_markers = Object.create(null);
+        const deviceIconCache = Object.create(null);
+
+        function getDeviceIcon(device) {
+            const markerColor = device.status ? 'green' : (device.maintenance == 1 ? 'blue' : 'red');
+            const isNetworkWired = device.typeIcon === 'network-wired' && device.icon;
+            const key = isNetworkWired
+                ? `nwimg|${device.icon}|${markerColor}`
+                : `${device.typeIcon}|${markerColor}`;
+            if (!deviceIconCache[key]) {
+                if (isNetworkWired) {
+                    deviceIconCache[key] = L.divIcon({
+                        className: `awesome-marker awesome-marker-icon-${markerColor}`,
+                        html: `
+                        <div style="
+                            position:absolute;
+                            top:6px; left:6px; right:6px;
+                            width:22px; height:22px;
+                            margin:0 auto;
+                            border-radius:50%;
+                            overflow:hidden;
+                            display:flex; align-items:center; justify-content:center;">
+                            <img src="${device.icon}" alt="" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">
+                        </div>
+                        `,
+                        iconSize: [35, 45],
+                        iconAnchor: [17, 42],
+                        popupAnchor: [1, -32],
+                    });
+                } else {
+                    deviceIconCache[key] = L.AwesomeMarkers.icon({
+                        icon: device.typeIcon,
+                        markerColor,
+                        prefix: 'fa',
+                        iconColor: 'white'
+                    });
+                }
+            }
+            return deviceIconCache[key];
+        }
+
+        function getDeviceZIndexOffset(device) {
+            if (device.status) { // up
+                return 0;
+            } else if (device.maintenance == 1) { // down + maintenance
+                return 10000;
+            }
+            return 5000; // down
+        }
+
+        // Popup content is built when opened, from the marker's current device data
+        function deviceMarkerPopupContent(marker) {
+            return createMarkerHTML(marker.deviceData, marker.deviceData["id"]);
+        }
+        // !--
+
         function populate_map_markers(map_id, group_radius = 10, status = [0,1], device_group = 0) {
             $.ajax({
                 type: "POST",
@@ -323,80 +380,6 @@
                 dataType: "json",
                 data: { location_valid: 1, disabled: 0, disabled_alerts: disabled_alerts, statuses: status, group: device_group },
                 success: function (data) {
-                    // --- UPDATED !--
-                    var markers = Object.values(data)
-                        .sort((deviceA, deviceB) =>
-                            String(deviceA.sname ?? deviceA.hostname ?? '').localeCompare(
-                                String(deviceB.sname ?? deviceB.hostname ?? ''),
-                                undefined,
-                                {
-                                    numeric: true,
-                                    sensitivity: 'base'
-                                }
-                            )
-                        )
-                        .map((device) => {
-                            const markerColor = device.status ? 'green' : (device.maintenance == 1 ? 'blue' : 'red');
-                            const isNetworkWired = device.typeIcon === 'network-wired' && device.icon;
-                            if (isNetworkWired) {
-                                var deviceMarker = L.divIcon({
-                                    className: `awesome-marker awesome-marker-icon-${markerColor}`,
-                                    html: `
-                                    <div style="
-                                        position:absolute;
-                                        top:6px; left:6px; right:6px;
-                                        width:22px; height:22px;
-                                        margin:0 auto;
-                                        border-radius:50%;
-                                        overflow:hidden;
-                                        display:flex; align-items:center; justify-content:center;">
-                                        <img src="${device.icon}" alt="" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">
-                                    </div>
-                                    `,
-                                    iconSize: [35, 45],
-                                    iconAnchor: [17, 42],
-                                    popupAnchor: [1, -32],
-                                });
-                            } else {
-                                var deviceMarker = L.AwesomeMarkers.icon({
-                                    icon: device.typeIcon,
-                                    markerColor,
-                                    prefix: 'fa',
-                                    iconColor: 'white'
-                                });
-                            }
-                            // !--
-
-                            var markerData = {
-                                title: device.sname,
-                                icon: deviceMarker,
-                            };
-
-                            if (device.status) { // up
-                                markerData.zIndexOffset = 0;
-                            } else if (device.maintenance == 1) { // down + maintenance
-                                markerData.zIndexOffset = 10000;
-                            } else { // down
-                                markerData.zIndexOffset = 5000;
-                            }
-
-                            var marker = L.marker(new L.LatLng(device.lat, device.lng), markerData);
-                            marker.deviceData = device; // --- ADDED
-                            const marker_html = createMarkerHTML(device, device["id"]); // --- ADDED
-                            // --- UPDATED !--
-                            const widgetWidth = document.getElementById(map_id)?.clientWidth || 600;
-                            const popupMaxWidth = Math.max(260, widgetWidth - 24);
-                            marker.bindPopup(marker_html, {
-                                className: 'marker-style',
-                                maxWidth: popupMaxWidth,
-                                autoPan: true,
-                                keepInView: true,
-                                autoPanPadding: [12, 12]
-                            });
-                            // !--
-                            return marker;
-                        });
-
                     var map = get_map(map_id);
                     if (! map.markerCluster) {
                         map.markerCluster = L.markerClusterGroup({
@@ -431,8 +414,80 @@
                         map.addLayer(map.markerCluster);
                     }
 
-                    map.markerCluster.clearLayers();
-                    map.markerCluster.addLayers(markers);
+                    // --- UPDATED: update existing markers in place, add new ones, remove missing ones !--
+                    const widgetWidth = document.getElementById(map_id)?.clientWidth || 600;
+                    const popupMaxWidth = Math.max(260, widgetWidth - 24);
+                    const seen = Object.create(null);
+                    const added = [];
+
+                    Object.values(data)
+                        .sort((deviceA, deviceB) =>
+                            String(deviceA.sname ?? deviceA.hostname ?? '').localeCompare(
+                                String(deviceB.sname ?? deviceB.hostname ?? ''),
+                                undefined,
+                                {
+                                    numeric: true,
+                                    sensitivity: 'base'
+                                }
+                            )
+                        )
+                        .forEach((device) => {
+                            const id = String(device.id);
+                            seen[id] = true;
+
+                            const icon = getDeviceIcon(device);
+                            const zIndexOffset = getDeviceZIndexOffset(device);
+                            const latlng = L.latLng(device.lat, device.lng);
+                            let marker = device_markers[id];
+
+                            if (marker) {
+                                // Only update items changed (setLatLng re-clusters the marker, setIcon rebuilds its DOM)
+                                if (!marker.getLatLng().equals(latlng)) {
+                                    marker.setLatLng(latlng);
+                                }
+                                if (marker.options.icon !== icon) {
+                                    marker.setIcon(icon);
+                                }
+                                if (marker.options.zIndexOffset !== zIndexOffset) {
+                                    marker.setZIndexOffset(zIndexOffset);
+                                }
+                                marker.options.title = device.sname;
+                                marker.getPopup().options.maxWidth = popupMaxWidth;
+                            } else {
+                                marker = L.marker(latlng, {
+                                    title: device.sname,
+                                    icon,
+                                    zIndexOffset,
+                                });
+                                marker.bindPopup(deviceMarkerPopupContent, {
+                                    className: 'marker-style',
+                                    maxWidth: popupMaxWidth,
+                                    autoPan: true,
+                                    keepInView: true,
+                                    autoPanPadding: [12, 12]
+                                });
+                                device_markers[id] = marker;
+                                added.push(marker);
+                            }
+                            marker.deviceData = device;
+                        });
+
+                    const removed = [];
+                    for (const id in device_markers) {
+                        if (!(id in seen)) {
+                            removed.push(device_markers[id]);
+                            delete device_markers[id];
+                        }
+                    }
+                    if (removed.length) {
+                        map.markerCluster.removeLayers(removed);
+                    }
+                    if (added.length) {
+                        map.markerCluster.addLayers(added);
+                    }
+                    // Cluster colors are computed from deviceData, which may have changed
+                    map.markerCluster.refreshClusters();
+                    // !--
                 },
                 error: function(error){
                     toastr.error(error.statusText);
@@ -443,6 +498,9 @@
         // --- ADDED: render network links (including overlapping), graph builders (same as fullscreen map, minus HREFs) !--
         var link_markers = Object.create(null);
         var link_overlap_labels = Object.create(null);
+        let linkRenderers = Object.create(null); // created once Leaflet has loaded (see loadjs callback)
+        const LINK_RENDER_PADDING = 0.5;  // 0.5 = half a screen - lines are already drawn when they're panned or zoomed out into view
+        const LINK_RENDER_THROTTLE_MS = 100;
 
         function html_chars(str) {
             return String(str).replaceAll('&', '&amp;').replaceAll("'", '&apos;')
@@ -602,7 +660,9 @@
                 __lnmsLinkMinWeight,
                 __lnmsLinkMaxWeight
             );
-            line.setStyle({ weight: newWeight });
+            if (line.options.weight !== newWeight) { // skip no-op redraws (weights clamp to a narrow range)
+                line.setStyle({ weight: newWeight });
+            }
         }
         function __lnmsRescaleAllLinks() {
             for (const id in link_markers) {
@@ -620,6 +680,12 @@
                 (a.lng + b.lng) / 2
             );
         }
+        // Reuse badge icons: setIcon() rebuilds the badge's DOM element, so only call it when the badge actually changed
+        const overlapIconCache = Object.create(null);
+        function getOverlapIcon(count, bgColor) {
+            const key = `${count}|${bgColor}`;
+            return overlapIconCache[key] || (overlapIconCache[key] = makeOverlapIcon(count, bgColor));
+        }
         function updateOverlapLabel(link_id, latlngs, count, bgColor) {
             var map = get_map(map_id);
             if (count <= 1) {
@@ -630,14 +696,19 @@
                 return;
             }
             const midpoint = getMidpoint(latlngs);
-            if (link_overlap_labels[link_id]) {
-                link_overlap_labels[link_id]
-                    .setLatLng(midpoint)
-                    .setIcon(makeOverlapIcon(count, bgColor));
+            const icon = getOverlapIcon(count, bgColor);
+            const existing = link_overlap_labels[link_id];
+            if (existing) {
+                if (!existing.getLatLng().equals(midpoint)) {
+                    existing.setLatLng(midpoint);
+                }
+                if (existing.options.icon !== icon) {
+                    existing.setIcon(icon);
+                }
             } else {
                 const marker = L.marker(midpoint, {
                     pane: 'linkLabelsPane',
-                    icon: makeOverlapIcon(count, bgColor),
+                    icon,
                     interactive: true,
                     keyboard: false,
                 });
@@ -786,6 +857,18 @@
             return String(Math.round(s)).length * 2;
         }
 
+        // Tooltip/popup content is built only when shown, from the data stored on the line
+        function linkTooltipContent(layer) {
+            const view = layer._lnmsView;
+            const primary = view.members[0];
+            return (primary.local_name && primary.remote_name)
+                ? `${primary.local_name} ${arrow} ${primary.remote_name}`
+                : `${view.local_lat},${view.local_lng} ${arrow} ${view.remote_lat},${view.remote_lng}`;
+        }
+        function linkPopupContent(layer) {
+            return createLinkHTML(layer._lnmsView);
+        }
+
         function renderGeoLinks() {
             const map = get_map(map_id);
             if (!enableGeoLinks || !map) {
@@ -798,24 +881,13 @@
                 if (!members.length) {
                     return; // every member filtered out; removed below
                 }
+                rendered[link_id] = true;
 
                 const primary = members[0];
                 const isUp = !!primary.up;
                 const pane = isUp ? 'linksUpPane' : 'linksDownPane';
-                const color = isUp ? primary.color : '#e40606';
                 const width = linkSpeedWidth(members.reduce((sum, m) => sum + Number(m.speed || 0), 0));
-
-                const tip = (primary.local_name && primary.remote_name)
-                    ? `${primary.local_name} ${arrow} ${primary.remote_name}`
-                    : `${link.local_lat},${link.local_lng} ${arrow} ${link.remote_lat},${link.remote_lng}`;
-                const linkStyle = isUp
-                    ? { color, weight: width, opacity: __lnmsLinkOpacity, dashArray: '' }
-                    : { color, weight: width, opacity: 0.9, dashArray: '6,6' };
-                const latlng = [
-                    L.latLng(link.local_lat, link.local_lng),
-                    L.latLng(link.remote_lat, link.remote_lng),
-                ];
-                const popup_html = createLinkHTML({ ...link, members });
+                const weight = __lnmsClamp(width, __lnmsLinkMinWeight, __lnmsLinkMaxWeight);
 
                 let line = link_markers[link_id];
 
@@ -826,15 +898,41 @@
                     line = null;
                 }
 
+                // Group unchanged since the last render: only re-base the zoom scaling (as before), skip everything else
+                const sig = JSON.stringify([link.local_lat, link.local_lng, link.remote_lat, link.remote_lng, members]);
+                if (line && line._lnmsSig === sig) {
+                    __lnmsSetLinkBase(line, width);
+                    if (line.options.weight !== weight) {
+                        line.setStyle({ weight });
+                    }
+                    return;
+                }
+
+                const color = isUp ? primary.color : '#e40606';
+                const linkStyle = isUp
+                    ? { color, weight, opacity: __lnmsLinkOpacity, dashArray: '' }
+                    : { color, weight, opacity: 0.9, dashArray: '6,6' };
+                const latlng = [
+                    L.latLng(link.local_lat, link.local_lng),
+                    L.latLng(link.remote_lat, link.remote_lng),
+                ];
+
                 if (line) {
-                    line.setStyle(linkStyle).setLatLngs(latlng);
-                    line.setTooltipContent(tip);
-                    line.setPopupContent(popup_html);
+                    line._lnmsView = { ...link, members };
+                    line.setLatLngs(latlng).setStyle(linkStyle);
+                    // Content is generated on open, so only an open popup/tooltip needs refreshing
+                    if (line.isPopupOpen()) {
+                        line.getPopup().update();
+                    }
+                    if (line.isTooltipOpen()) {
+                        line.getTooltip().update();
+                    }
                 } else {
                     const widgetWidth = document.getElementById(map_id)?.clientWidth || 600;
-                    line = new L.polyline(latlng, { ...linkStyle, pane }).addTo(map);
-                    line.bindTooltip(tip, { className: "leaflet-link-tooltip", sticky: true, opacity: 0.9 });
-                    line.bindPopup(popup_html, {
+                    line = new L.polyline(latlng, { ...linkStyle, pane, renderer: linkRenderers[pane] }).addTo(map);
+                    line._lnmsView = { ...link, members };
+                    line.bindTooltip(linkTooltipContent, { className: "leaflet-link-tooltip", sticky: true, opacity: 0.9 });
+                    line.bindPopup(linkPopupContent, {
                         className: 'link-style',
                         maxWidth: Math.max(240, widgetWidth - 24),
                         autoPan: true,
@@ -843,14 +941,11 @@
                     });
                     link_markers[link_id] = line;
                 }
-
+                line._lnmsSig = sig;
                 __lnmsSetLinkBase(line, width);
-                __lnmsRescaleLink(line);
 
                 const sameLocation = link.local_lat === link.remote_lat && link.local_lng === link.remote_lng;
                 updateOverlapLabel(link_id, latlng, sameLocation ? 1 : members.length, color);
-
-                rendered[link_id] = true;
             });
 
             // Remove lines/badges that are filtered out or no longer returned by the server
@@ -1022,8 +1117,29 @@
                         if (enableGeoLinks) {
                             map.createPane('linksUpPane').style.zIndex = 400;
                             map.createPane('linksDownPane').style.zIndex = 410; // down links above up links
+                            // Line panes pass clicks through; each interactive SVG path re-enables pointer events (Leaflet CSS) - otherwise down-links pane covers the up-links pane and swallows the clicks
+                            map.getPane('linksUpPane').style.pointerEvents = 'none';
+                            map.getPane('linksDownPane').style.pointerEvents = 'none';
                             map.createPane('linkLabelsPane').style.zIndex = 450;
                             map.getPane('linkLabelsPane').style.pointerEvents = 'none';
+                            // Dedicated renderers for link lines - padding = extra area drawn around the viewport on each side
+                            linkRenderers = {
+                                linksUpPane: L.svg({ pane: 'linksUpPane', padding: LINK_RENDER_PADDING }),
+                                linksDownPane: L.svg({ pane: 'linksDownPane', padding: LINK_RENDER_PADDING }),
+                            };
+                            // Redraw the link renderers during a pan (throttled), the way tile layers load while the map moves - renderer._update() is Leaflet-internal (used on moveend)
+                            map.on('move', L.Util.throttle(function () {
+                                if (map._animatingZoom) {
+                                    return; // mid zoom animation: Leaflet redraws on zoomend
+                                }
+                                const zoom = map.getZoom();
+                                for (const pane in linkRenderers) {
+                                    const renderer = linkRenderers[pane];
+                                    if (renderer._map && renderer._zoom === zoom) {
+                                        renderer._update();
+                                    }
+                                }
+                            }, LINK_RENDER_THROTTLE_MS));
                             populate_map_links(map_id);
                             map.on('zoomend', __lnmsRescaleAllLinks);
                         }

@@ -389,8 +389,32 @@ html, body, #fullscreen-map {
     // --- ADDED: pane for overlapping link labels, network link line width scaling with zoom level, URL and graph builders, device icon cache !--
     device_map.createPane('linksUpPane').style.zIndex = 400;
     device_map.createPane('linksDownPane').style.zIndex = 410; // down links above up links
+    // Line panes pass clicks through; each interactive SVG path re-enables pointer events (Leaflet CSS) - otherwise down-links pane covers the up-links pane and swallows the clicks
+    device_map.getPane('linksUpPane').style.pointerEvents = 'none';
+    device_map.getPane('linksDownPane').style.pointerEvents = 'none';
     device_map.createPane('linkLabelsPane').style.zIndex = 450;
     device_map.getPane('linkLabelsPane').style.pointerEvents = 'none';
+
+    const LINK_RENDER_PADDING = 0.5; // 0.5 = half a screen - lines are already drawn when they're panned or zoomed out into view
+    const LINK_RENDER_THROTTLE_MS = 100;
+    // Dedicated renderers for link lines - padding = extra area drawn around the viewport on each side
+    const linkRenderers = {
+        linksUpPane: L.svg({ pane: 'linksUpPane', padding: LINK_RENDER_PADDING }),
+        linksDownPane: L.svg({ pane: 'linksDownPane', padding: LINK_RENDER_PADDING }),
+    };
+    // Redraw the link renderers during a pan (throttled), the way tile layers load while the map moves - renderer._update() is Leaflet-internal (used on moveend)
+    device_map.on('move', L.Util.throttle(function () {
+        if (device_map._animatingZoom) {
+            return; // mid zoom animation: Leaflet redraws on zoomend
+        }
+		const zoom = device_map.getZoom();
+		for (const pane in linkRenderers) {
+		    const renderer = linkRenderers[pane];
+		    if (renderer._map && renderer._zoom === zoom) {
+		        renderer._update();
+		    }
+		}
+    }, LINK_RENDER_THROTTLE_MS));
 
     const __lnmsLinkMinWeight = 2;
     const __lnmsLinkMaxWeight = 3.5;
@@ -417,7 +441,9 @@ html, body, #fullscreen-map {
             __lnmsLinkMinWeight,
             __lnmsLinkMaxWeight
         );
-        line.setStyle({ weight: newWeight });
+        if (line.options.weight !== newWeight) { // skip no-op redraws (weights clamp to a narrow range)
+            line.setStyle({ weight: newWeight });
+        }
     }
     function __lnmsRescaleAllLinks() {
         for (const id in link_markers) {
@@ -436,6 +462,12 @@ html, body, #fullscreen-map {
             (a.lng + b.lng) / 2
         );
     }
+    // Reuse badge icons: setIcon() rebuilds the badge's DOM element, so only call it when the badge actually changed
+    const overlapIconCache = Object.create(null);
+    function getOverlapIcon(count, bgColor) {
+        const key = `${count}|${bgColor}`;
+        return overlapIconCache[key] || (overlapIconCache[key] = makeOverlapIcon(count, bgColor));
+    }
     function updateOverlapLabel(link_id, latlngs, count, bgColor) {
         if (count <= 1) {
             if (link_overlap_labels[link_id]) {
@@ -445,14 +477,19 @@ html, body, #fullscreen-map {
             return;
         }
         const midpoint = getMidpoint(latlngs);
-        if (link_overlap_labels[link_id]) {
-            link_overlap_labels[link_id]
-                .setLatLng(midpoint)
-                .setIcon(makeOverlapIcon(count, bgColor));
+        const icon = getOverlapIcon(count, bgColor);
+        const existing = link_overlap_labels[link_id];
+        if (existing) {
+            if (!existing.getLatLng().equals(midpoint)) {
+                existing.setLatLng(midpoint);
+            }
+            if (existing.options.icon !== icon) {
+                existing.setIcon(icon);
+            }
         } else {
             const marker = L.marker(midpoint, {
                 pane: 'linkLabelsPane',
-                icon: makeOverlapIcon(count, bgColor),
+                icon,
                 interactive: true,
                 keyboard: false,
             });
@@ -826,6 +863,18 @@ html, body, #fullscreen-map {
         return String(Math.round(s)).length * 2;
     }
 
+    // Tooltip/popup content is built only when shown, from the data stored on the line
+    function linkTooltipContent(layer) {
+        const view = layer._lnmsView;
+        const primary = view.members[0];
+        return (primary.local_name && primary.remote_name)
+            ? `${primary.local_name} ${arrow} ${primary.remote_name}`
+            : `${view.local_lat},${view.local_lng} ${arrow} ${view.remote_lat},${view.remote_lng}`;
+    }
+    function linkPopupContent(layer) {
+        return createLinkHTML(layer._lnmsView);
+    }
+
     function renderGeoLinks() {
         if (!geoLinksEnabled) {
             return; // never touch dependency ("depends") lines
@@ -837,24 +886,13 @@ html, body, #fullscreen-map {
             if (!members.length) {
                 return; // every member filtered out; removed below
             }
+            rendered[link_id] = true;
 
             const primary = members[0];
             const isUp = !!primary.up;
             const pane = isUp ? 'linksUpPane' : 'linksDownPane';
-            const color = isUp ? primary.color : '#e40606';
             const width = linkSpeedWidth(members.reduce((sum, m) => sum + Number(m.speed || 0), 0));
-
-            const tip = (primary.local_name && primary.remote_name)
-                ? `${primary.local_name} ${arrow} ${primary.remote_name}`
-                : `${link.local_lat},${link.local_lng} ${arrow} ${link.remote_lat},${link.remote_lng}`;
-            const linkStyle = isUp
-                ? { color, weight: width, opacity: __lnmsLinkOpacity, smoothFactor: 1, dashArray: '' }
-                : { color, weight: width, opacity: 0.9, smoothFactor: 1, dashArray: '6,6' };
-            const latlng = [
-                new L.LatLng(link.local_lat, link.local_lng),
-                new L.LatLng(link.remote_lat, link.remote_lng),
-            ];
-            const popup_html = createLinkHTML({ ...link, members });
+            const weight = __lnmsClamp(width, __lnmsLinkMinWeight, __lnmsLinkMaxWeight);
 
             let line = link_markers[link_id];
 
@@ -865,25 +903,48 @@ html, body, #fullscreen-map {
                 line = null;
             }
 
+            // Group unchanged since the last render: only re-base the zoom scaling (as before), skip everything else
+            const sig = JSON.stringify([link.local_lat, link.local_lng, link.remote_lat, link.remote_lng, members]);
+            if (line && line._lnmsSig === sig) {
+                __lnmsSetLinkBase(line, width);
+                if (line.options.weight !== weight) {
+                    line.setStyle({ weight });
+                }
+                return;
+            }
+
+            const color = isUp ? primary.color : '#e40606';
+            const linkStyle = isUp
+                ? { color, weight, opacity: __lnmsLinkOpacity, smoothFactor: 1, dashArray: '' }
+                : { color, weight, opacity: 0.9, smoothFactor: 1, dashArray: '6,6' };
+            const latlng = [
+                L.latLng(link.local_lat, link.local_lng),
+                L.latLng(link.remote_lat, link.remote_lng),
+            ];
+
             if (line) {
+                line._lnmsView = { ...link, members };
                 line.setLatLngs(latlng).setStyle(linkStyle);
-                line.setTooltipContent(tip);
-                line.setPopupContent(popup_html);
+                // Content is generated on open, so only an open popup/tooltip needs refreshing
+                if (line.isPopupOpen()) {
+                    line.getPopup().update();
+                }
+                if (line.isTooltipOpen()) {
+                    line.getTooltip().update();
+                }
             } else {
-                line = new L.Polyline(latlng, { ...linkStyle, pane });
-                line.bindTooltip(tip, { className: "leaflet-link-tooltip", sticky: true, opacity: 0.9 });
-                line.bindPopup(popup_html, { className: 'link-style' });
+                line = new L.Polyline(latlng, { ...linkStyle, pane, renderer: linkRenderers[pane] });
+                line._lnmsView = { ...link, members };
+                line.bindTooltip(linkTooltipContent, { className: "leaflet-link-tooltip", sticky: true, opacity: 0.9 });
+                line.bindPopup(linkPopupContent, { className: 'link-style' });
                 link_markers[link_id] = line;
                 link_layer.addLayer(line);
             }
-
+            line._lnmsSig = sig;
             __lnmsSetLinkBase(line, width);
-            __lnmsRescaleLink(line);
 
             const sameLocation = link.local_lat === link.remote_lat && link.local_lng === link.remote_lng;
             updateOverlapLabel(link_id, latlng, sameLocation ? 1 : members.length, color);
-
-            rendered[link_id] = true;
         });
 
         // Remove lines/badges that are filtered out or no longer returned by the server
@@ -1010,10 +1071,20 @@ html, body, #fullscreen-map {
                         }
                     }
                     if(device_id in device_markers) {
-                        device_markers[device_id].setLatLng(new L.LatLng(device["lat"], device["lng"]));
-                        device_markers[device_id].setZIndexOffset(z_offset);
-                        device_markers[device_id].deviceData = device; // --- ADDED
-                        device_markers[device_id].setIcon(icon);
+                        // --- UPDATED: only update items changed (setLatLng re-clusters the marker, setIcon rebuilds its DOM) !--
+                        const existing = device_markers[device_id];
+                        const latlng = new L.LatLng(device["lat"], device["lng"]);
+                        if (!existing.getLatLng().equals(latlng)) {
+                            existing.setLatLng(latlng);
+                        }
+                        if (existing.options.zIndexOffset !== z_offset) {
+                            existing.setZIndexOffset(z_offset);
+                        }
+                        existing.deviceData = device;
+                        if (existing.options.icon !== icon) { // getDeviceIcon() returns cached icons
+                            existing.setIcon(icon);
+                        }
+                        // !--
 
                         // If we have requested parent data, update lines
                         $.each( device["parents"], function( parent_idx, parent_id ) {
