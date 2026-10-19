@@ -239,6 +239,9 @@
 #worldmap_widget-{{ $id }} .wm-reset-view {
   background: var(--wm-popup-bg);
   color: var(--wm-popup-text);
+  border: none;
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 #worldmap_widget-{{ $id }} .wm-reset-view:hover {
   filter: brightness(0.92);
@@ -262,7 +265,7 @@
   color: var(--wm-popup-text);
   border-radius: 10px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-  margin-bottom: 25px;
+  margin-bottom: 20.5px;
 }
 #worldmap_widget-{{ $id }} .link-speed-filter__chip {
   display: flex;

@@ -264,6 +264,15 @@ html, body, #fullscreen-map {
       opacity: 0.85;
     }
 
+    /* Adjust refresh button by color mode */
+    .wm-reset-view {
+      background: var(--wm-popup-bg);
+      color: var(--wm-popup-text);
+      border: none;
+      border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+    }
+
     /* Spiderfy animation for AwesomeMarkers (they lack .leaflet-marker-icon, which markercluster's transition targets) */
     .leaflet-cluster-anim .awesome-marker {
       transition: transform 0.3s ease-out, opacity 0.3s ease-in;
@@ -348,6 +357,44 @@ html, body, #fullscreen-map {
     if (fullScreenMapElem) {
         fullScreenMapElem.dataset.theme = String(window.siteStyle).toLowerCase().includes('dark') ? 'dark' : 'light';
     }
+
+    // Reset view button (same as the widget map)
+    const initialView = {
+        lat: device_map.getCenter().lat,
+        lng: device_map.getCenter().lng,
+        zoom: device_map.getZoom()
+    };
+
+    const ResetViewControl = L.Control.extend({
+        options: { position: 'bottomright' },
+
+        onAdd: function () {
+            const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control wm-reset-view');
+
+            container.style.width = '52px';
+            container.style.height = '52px';
+            container.style.display = 'flex';
+            container.style.alignItems = 'center';
+            container.style.justifyContent = 'center';
+            container.style.cursor = 'pointer';
+            container.innerHTML = "\u{21BA}";
+            container.style.fontSize = '26px';
+            container.title = 'Reset view';
+
+            L.DomEvent.disableClickPropagation(container);
+            L.DomEvent.disableScrollPropagation(container);
+
+            container.onclick = function () {
+                device_map.setView([initialView.lat, initialView.lng], initialView.zoom, { animate: true });
+                device_map.closePopup();
+                device_marker_cluster.unspiderfy();
+            };
+
+            return container;
+        }
+    });
+
+    device_map.addControl(new ResetViewControl());
     // !--
 
     var device_marker_cluster = L.markerClusterGroup({
