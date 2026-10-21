@@ -290,6 +290,18 @@
   border-radius: 50%;
   flex: none;
 }
+/* Filter bar: link speed filter + OS filter side by side */
+{{ $scope }} .geomap-filters {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+{{ $scope }} .link-speed-filter__icon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  flex: none;
+}
 /* matches SMALL_SCREEN_QUERY in geomap-shared.js */
 @media (max-width: 899.98px) {
   {{ $scope }} .link-speed-filter {

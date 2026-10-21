@@ -29,6 +29,23 @@ window.LnmsGeoMap = window.LnmsGeoMap || (function () {
     const LINK_RENDER_THROTTLE_MS = 100;
     const SMALL_SCREEN_QUERY = '(max-width: 899.98px)'; // matches the .link-speed-filter @media rule
     const CLUSTER_CLASS = 'Cluster marker-cluster marker-cluster-small leaflet-zoom-animated leaflet-clickable';
+    
+    // ~~ Filters ~~
+    
+    const LINK_SPEED_BUCKETS = [
+        { key: '1G',   label: '<10G', min: 0,            color: getSpeedColor(0) },
+        { key: '10G',  label: '10G',  min: 10000000000,  color: getSpeedColor(10e9) },
+        { key: '25G',  label: '25G',  min: 25000000000,  color: getSpeedColor(25e9) },
+        { key: '40G',  label: '40G',  min: 40000000000,  color: getSpeedColor(40e9) },
+        { key: '100G', label: '100G', min: 100000000000, color: getSpeedColor(100e9) },
+    ];
+    const OS_FILTERS = [ // Device OS filter: os = OS display name (os_text from maps.getdevices), label = text shown on the chip
+        { os: 'HP ProCurve',        label: 'Aruba' },
+        { os: 'ArubaOS-CX',         label: 'Aruba CX' },
+        { os: 'IP Office Firmware', label: 'Avaya' },
+        { os: 'Juniper JunOS',      label: 'Juniper' },
+        { os: 'Ping only',          label: 'Facilities' },
+    ];
 
     // ~~~~~ Stateless helpers ~~~~~
 
@@ -58,14 +75,6 @@ window.LnmsGeoMap = window.LnmsGeoMap || (function () {
         if (gbps >= 10)  return '#7A5125'; // 10G brown
         return '#C9750F';                  // <10G orange
     }
-
-    const LINK_SPEED_BUCKETS = [
-        { key: '1G',   label: '<10G', min: 0,            color: getSpeedColor(0) },
-        { key: '10G',  label: '10G',  min: 10000000000,  color: getSpeedColor(10e9) },
-        { key: '25G',  label: '25G',  min: 25000000000,  color: getSpeedColor(25e9) },
-        { key: '40G',  label: '40G',  min: 40000000000,  color: getSpeedColor(40e9) },
-        { key: '100G', label: '100G', min: 100000000000, color: getSpeedColor(100e9) },
-    ];
 
     function getSpeedBucket(bps) {
         const n = Number(bps || 0);
@@ -435,8 +444,12 @@ window.LnmsGeoMap = window.LnmsGeoMap || (function () {
         const speedVisible = Object.create(null);
         LINK_SPEED_BUCKETS.forEach(({ key }) => { speedVisible[key] = true; });
         let geoLinkData = Object.create(null);
-        let filterControl = null;
         let filterEl = null;
+        const osVisible = Object.create(null);
+        OS_FILTERS.forEach(({ os }) => { osVisible[os] = true; });
+        let filterBarControl = null;
+        let osFilterEl = null;
+        let osFilterSig = '';
         let linkRenderers = null;
         let smallScreenQuery = null;
         let onSmallScreenChange = null;
@@ -462,56 +475,169 @@ window.LnmsGeoMap = window.LnmsGeoMap || (function () {
         // Update existing markers in place, add new ones, remove missing ones
         function setDevices(data) {
             const seen = Object.create(null);
-            const added = [];
             const popupOptions = devicePopupOptions();
+            const devices = Object.values(data || {}).sort(compareDeviceNames);
 
-            Object.values(data || {})
-                .sort(compareDeviceNames)
-                .forEach((device) => {
-                    const id = String(device.id);
-                    seen[id] = true;
+            devices.forEach((device) => {
+                const id = String(device.id);
+                seen[id] = true;
 
-                    const icon = getDeviceIcon(device);
-                    const zIndexOffset = getDeviceZIndexOffset(device);
-                    const latlng = L.latLng(device.lat, device.lng);
-                    let marker = deviceMarkers[id];
+                const icon = getDeviceIcon(device);
+                const zIndexOffset = getDeviceZIndexOffset(device);
+                const latlng = L.latLng(device.lat, device.lng);
+                let marker = deviceMarkers[id];
 
-                    if (marker) {
-                        // Only update items changed (setLatLng re-clusters the marker, setIcon rebuilds its DOM)
-                        if (!marker.getLatLng().equals(latlng)) {
-                            marker.setLatLng(latlng);
-                        }
-                        if (marker.options.icon !== icon) {
-                            marker.setIcon(icon);
-                        }
-                        if (marker.options.zIndexOffset !== zIndexOffset) {
-                            marker.setZIndexOffset(zIndexOffset);
-                        }
-                        marker.options.title = device.sname;
-                        Object.assign(marker.getPopup().options, popupOptions);
-                    } else {
-                        marker = L.marker(latlng, { title: device.sname, icon, zIndexOffset });
-                        marker.bindPopup(devicePopupContent, popupOptions);
-                        deviceMarkers[id] = marker;
-                        added.push(marker);
+                if (marker) {
+                    // Only update items changed (setLatLng re-clusters the marker, setIcon rebuilds its DOM)
+                    if (!marker.getLatLng().equals(latlng)) {
+                        marker.setLatLng(latlng);
                     }
-                    marker.deviceData = device;
-                });
+                    if (marker.options.icon !== icon) {
+                        marker.setIcon(icon);
+                    }
+                    if (marker.options.zIndexOffset !== zIndexOffset) {
+                        marker.setZIndexOffset(zIndexOffset);
+                    }
+                    marker.options.title = device.sname;
+                    Object.assign(marker.getPopup().options, popupOptions);
+                } else {
+                    marker = L.marker(latlng, { title: device.sname, icon, zIndexOffset });
+                    marker.bindPopup(devicePopupContent, popupOptions);
+                    deviceMarkers[id] = marker;
+                }
+                marker.deviceData = device;
+            });
 
             const removed = [];
             for (const id in deviceMarkers) {
                 if (!(id in seen)) {
-                    removed.push(deviceMarkers[id]);
+                    if (markerCluster.hasLayer(deviceMarkers[id])) {
+                        removed.push(deviceMarkers[id]);
+                    }
                     delete deviceMarkers[id];
                 }
             }
             if (removed.length) {
                 markerCluster.removeLayers(removed);
             }
-            if (added.length) {
-                markerCluster.addLayers(added);
-            }
+
+            syncOsFilter(devices);
+            applyOsFilter(); // adds new markers / shows or hides existing ones per the OS filter
             markerCluster.refreshClusters();
+        }
+
+        // ~~ Filter bar (bottom-left): link speed filter, OS filter to its right ~~
+        
+        function ensureFilterBar() {
+            if (!filterBarControl) {
+                const FilterBarControl = L.Control.extend({
+                    options: { position: 'bottomleft' },
+                    onAdd: function () {
+                        const container = L.DomUtil.create('div', 'geomap-filters leaflet-control');
+                        L.DomEvent.disableClickPropagation(container);
+                        L.DomEvent.disableScrollPropagation(container);
+                        return container;
+                    },
+                });
+                filterBarControl = new FilterBarControl();
+                map.addControl(filterBarControl);
+            }
+            return filterBarControl.getContainer();
+        }
+
+        // ~~ Device OS filter ~~
+
+        function applyOsFilter() {
+            const toAdd = [];
+            const toRemove = [];
+            for (const id in deviceMarkers) {
+                const marker = deviceMarkers[id];
+                const show = osVisible[marker.deviceData.os_text] !== false; // OSes not in OS_FILTERS always show
+                const shown = markerCluster.hasLayer(marker);
+                if (show && !shown) {
+                    toAdd.push(marker);
+                } else if (!show && shown) {
+                    toRemove.push(marker);
+                }
+            }
+            if (toRemove.length) {
+                markerCluster.removeLayers(toRemove);
+            }
+            if (toAdd.length) {
+                markerCluster.addLayers(toAdd);
+            }
+        }
+
+        function setOsVisible(os, visible, apply = true) {
+            osVisible[os] = visible;
+            const chip = osFilterEl?.querySelector(`[data-os="${CSS.escape(os)}"]`);
+            if (chip) {
+                chip.classList.toggle('is-active', visible);
+                chip.setAttribute('aria-pressed', String(visible));
+            }
+            if (apply) {
+                applyOsFilter();
+            }
+        }
+
+        function createOsFilterEl(options) {
+            const container = L.DomUtil.create('div', 'link-speed-filter os-filter');
+            container.setAttribute('role', 'group');
+            container.setAttribute('aria-label', 'Filter devices by type');
+
+            options.forEach(({ os, label, icon }) => {
+                const chip = L.DomUtil.create('button', 'link-speed-filter__chip', container);
+                chip.type = 'button';
+                chip.dataset.os = os;
+                chip.classList.toggle('is-active', osVisible[os]);
+                chip.setAttribute('aria-pressed', String(osVisible[os]));
+
+                if (icon) {
+                    const img = L.DomUtil.create('img', 'link-speed-filter__icon', chip);
+                    img.src = icon;
+                    img.alt = '';
+                }
+                chip.appendChild(document.createTextNode(label));
+
+                L.DomEvent.on(chip, 'click', function (e) {
+                    L.DomEvent.stop(e);
+                    setOsVisible(os, !osVisible[os]);
+                });
+            });
+            return container;
+        }
+
+        // Show only the types present; hide the filter if fewer than 2 are present
+        function syncOsFilter(devices) { // devices sorted by name, so the icon comes from the first device of each type
+            const present = [];
+            OS_FILTERS.forEach((filter) => {
+                const device = devices.find(d => d.os_text === filter.os);
+                if (device) {
+                    present.push({ ...filter, icon: device.icon });
+                } else {
+                    osVisible[filter.os] = true; // absent types come back visible
+                }
+            });
+
+            const show = present.length > 1;
+            if (!show) {
+                OS_FILTERS.forEach(({ os }) => { osVisible[os] = true; }); // no filter shown: nothing will stay hidden
+            }
+
+            // Rebuild the chips only when the set of types (or their icons) changed
+            const sig = show ? present.map(p => `${p.os}|${p.icon}`).join('\n') : '';
+            if (sig === osFilterSig) {
+                return;
+            }
+            osFilterSig = sig;
+
+            const next = show ? createOsFilterEl(present) : null;
+            if (osFilterEl) {
+                next ? osFilterEl.replaceWith(next) : osFilterEl.remove();
+            } else if (next) {
+                ensureFilterBar().appendChild(next); // appended = right of the speed filter
+            }
+            osFilterEl = next;
         }
 
         // ~~ Reset view control ~~
@@ -721,48 +847,37 @@ window.LnmsGeoMap = window.LnmsGeoMap || (function () {
             }
         }
 
-        function createFilterControl() {
-            const LinkSpeedFilterControl = L.Control.extend({
-                options: { position: 'bottomleft' },
-                onAdd: function () {
-                    const container = L.DomUtil.create('div', 'link-speed-filter leaflet-control');
-                    container.setAttribute('role', 'group');
-                    container.setAttribute('aria-label', 'Filter links by speed');
+        function createSpeedFilterEl() {
+            const container = L.DomUtil.create('div', 'link-speed-filter');
+            container.setAttribute('role', 'group');
+            container.setAttribute('aria-label', 'Filter links by speed');
 
-                    LINK_SPEED_BUCKETS.forEach(({ key, label, color }) => {
-                        const chip = L.DomUtil.create('button', 'link-speed-filter__chip', container);
-                        chip.type = 'button';
-                        chip.dataset.speed = key;
-                        chip.classList.toggle('is-active', speedVisible[key]);
-                        chip.setAttribute('aria-pressed', String(speedVisible[key]));
+            LINK_SPEED_BUCKETS.forEach(({ key, label, color }) => {
+                const chip = L.DomUtil.create('button', 'link-speed-filter__chip', container);
+                chip.type = 'button';
+                chip.dataset.speed = key;
+                chip.classList.toggle('is-active', speedVisible[key]);
+                chip.setAttribute('aria-pressed', String(speedVisible[key]));
 
-                        const dot = L.DomUtil.create('span', 'link-speed-filter__dot', chip);
-                        dot.style.background = color;
-                        chip.appendChild(document.createTextNode(label)); // text node so "<10G" stays literal
+                const dot = L.DomUtil.create('span', 'link-speed-filter__dot', chip);
+                dot.style.background = color;
+                chip.appendChild(document.createTextNode(label)); // text node so "<10G" stays literal
 
-                        L.DomEvent.on(chip, 'click', function (e) {
-                            L.DomEvent.stop(e);
-                            setSpeedVisible(key, !speedVisible[key]);
-                        });
-                    });
-
-                    L.DomEvent.disableClickPropagation(container);
-                    L.DomEvent.disableScrollPropagation(container);
-                    filterEl = container;
-                    return container;
-                },
+                L.DomEvent.on(chip, 'click', function (e) {
+                    L.DomEvent.stop(e);
+                    setSpeedVisible(key, !speedVisible[key]);
+                });
             });
-            return new LinkSpeedFilterControl();
+            return container;
         }
 
         function syncFilterControl() {
             const show = opts.filterAlwaysVisible || Object.keys(geoLinkData).length > 0;
-            if (show && !filterControl) {
-                filterControl = createFilterControl();
-                map.addControl(filterControl);
-            } else if (!show && filterControl) {
-                map.removeControl(filterControl);
-                filterControl = null;
+            if (show && !filterEl) {
+                filterEl = createSpeedFilterEl();
+                ensureFilterBar().prepend(filterEl); // prepended = left of the OS filter
+            } else if (!show && filterEl) {
+                filterEl.remove();
                 filterEl = null;
             }
         }
@@ -815,13 +930,18 @@ window.LnmsGeoMap = window.LnmsGeoMap || (function () {
 
             syncFilterControl();
 
-            // Filter is hidden below 900px: don't leave links hidden with no way to restore them
+            // Filters are hidden below 900px: don't leave links or devices hidden with no way to restore them
             smallScreenQuery = window.matchMedia(SMALL_SCREEN_QUERY);
             onSmallScreenChange = function () {
-                if (smallScreenQuery.matches) {
+                if (!smallScreenQuery.matches) {
+                    return;
+                }
+                if (opts.geoLinks) {
                     LINK_SPEED_BUCKETS.forEach(({ key }) => setSpeedVisible(key, true, false));
                     renderGeoLinks();
                 }
+                OS_FILTERS.forEach(({ os }) => setOsVisible(os, true, false));
+                applyOsFilter();
             };
             smallScreenQuery.addEventListener('change', onSmallScreenChange);
         }

@@ -514,9 +514,10 @@ class MapDataController extends Controller
 
             $device_list[$device->device_id] = [
                 'id' => $device->device_id,
-                // --- ADDED: device ip and hostname for display !--
+                // --- ADDED: device ip and hostname for display, and OS for filter !--
                 'ip' => $device->ip,
                 'hostname' => $device->hostname,
+                'os_text' => LibrenmsConfig::getOsSetting($device->os, 'text', $device->os),
                 // !--
                 'icon' => $device->icon,
                 'typeIcon' => $deviceTypes->get($device->type, 'server'),

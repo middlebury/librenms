@@ -74,7 +74,7 @@
 #worldmap_widget-{{ $id }}[data-theme="dark"] .wm-reset-view:hover {
   filter: brightness(1.25);
 }
-#worldmap_widget-{{ $id }} .link-speed-filter {
+#worldmap_widget-{{ $id }} .geomap-filters {
   margin-bottom: 20.5px;
 }
 /* !-- */
