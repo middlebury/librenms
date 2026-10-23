@@ -377,8 +377,7 @@ window.LnmsGeoMap = window.LnmsGeoMap || (function () {
         const otherMembers = members.slice(1).map(member => {
             const portHREF = escapeHtml(createPortHREF(member.local_device_id, member.local_port_id));
             const meta = full
-                ? `&nbsp; <a href="${escapeHtml(`graphs/to=0/id=${member.local_port_id}/type=port_bits/from=0/`)}" target="_blank" rel="noopener">traffic</a>
-                   &nbsp;|&nbsp; <a href="${portHREF}" target="_blank" rel="noopener">${formatBps(member.speed)}</a>
+                ? `&nbsp; <a href="${escapeHtml(`graphs/to=0/id=${member.local_port_id}/type=port_bits/from=0/`)}" target="_blank" rel="noopener">${formatBps(member.speed)}</a>
                    &nbsp;|&nbsp; <a href="${portHREF}" target="_blank" rel="noopener">${formatStatus(member.up)}</a>`
                 : `&nbsp; ${formatBps(member.speed)}
                    &nbsp;|&nbsp; ${formatStatus(member.up)}`;
