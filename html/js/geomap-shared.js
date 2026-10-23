@@ -547,23 +547,20 @@ window.LnmsGeoMap = window.LnmsGeoMap || (function () {
         // ~~ Device OS filter ~~
 
         function applyOsFilter() {
-            const toAdd = [];
-            const toRemove = [];
-            for (const id in deviceMarkers) {
-                const marker = deviceMarkers[id];
-                const show = osVisible[marker.deviceData.os_text] !== false; // OSes not in OS_FILTERS always show
-                const shown = markerCluster.hasLayer(marker);
-                if (show && !shown) {
-                    toAdd.push(marker);
-                } else if (!show && shown) {
-                    toRemove.push(marker);
-                }
-            }
+            const markers = Object.values(deviceMarkers)
+                .sort((a, b) => compareDeviceNames(a.deviceData, b.deviceData)); // numeric id keys iterate by id, not name
+            const isVisible = m => osVisible[m.deviceData.os_text] !== false; // OSes not in OS_FILTERS always show
+
+            const toRemove = markers.filter(m => !isVisible(m) && markerCluster.hasLayer(m));
             if (toRemove.length) {
                 markerCluster.removeLayers(toRemove);
             }
-            if (toAdd.length) {
-                markerCluster.addLayers(toAdd);
+
+            // re-add the whole visible set in name order
+            const visible = markers.filter(isVisible);
+            if (visible.some(m => !markerCluster.hasLayer(m))) {
+                markerCluster.clearLayers();
+                markerCluster.addLayers(visible);
             }
         }
 
