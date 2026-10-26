@@ -74,14 +74,14 @@
 /* Device popup dimensions */
 {{ $scope }} .leaflet-popup.marker-style .leaflet-popup-content-wrapper {
   max-width: calc(100cqi - 16px) !important;
-  max-height: calc(100dvh - 32px);
+  max-height: calc(100cqb - 32px);
   box-sizing: border-box;
   overflow: hidden;
 }
 {{ $scope }} .leaflet-popup.marker-style .leaflet-popup-content {
   width: min(900px, calc(100cqi - 32px)) !important;
   max-width: calc(100cqi - 32px) !important;
-  max-height: calc(100dvh - 64px);
+  max-height: calc(100cqb - 64px);
   overflow-y: auto;
   overflow-x: hidden;
   box-sizing: border-box;
@@ -155,15 +155,15 @@
   height: auto;
   aspect-ratio: 20 / 9;
 }
-/* 2 columns */
+/* 2 columns (portrait containers only: landscape containers keep graphs side by side so short containers don't overflow) */
 /* :not(.device-popup--1) raises specificity above the .device-popup--2/--3 rules so the breakpoints apply */
-@container (max-width: 900px) {
+@container (max-width: 900px) and (orientation: portrait) {
   {{ $scope }} .leaflet-popup.marker-style .device-popup:not(.device-popup--1) .device-popup__graphs {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-/* 1 column */
-@container (max-width: 620px) {
+/* 1 column (portrait containers only) */
+@container (max-width: 620px) and (orientation: portrait) {
   {{ $scope }} .leaflet-popup.marker-style .device-popup:not(.device-popup--1) .device-popup__graphs {
     grid-template-columns: 1fr;
   }
@@ -176,6 +176,11 @@
 {{ $scope }} .leaflet-popup.link-style .leaflet-popup-content,
 {{ $scope }} .leaflet-popup.link-style .leaflet-popup-content-wrapper {
   min-width: var(--wm-link-popup-min-width);
+}
+{{ $scope }} .leaflet-popup.link-style .leaflet-popup-content {
+  max-height: calc(100cqb - 64px);
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 {{ $scope }} .overlap-member-meta {
   display: flex;
@@ -290,6 +295,43 @@
   border-radius: 50%;
   flex: none;
 }
+/* Filter bar collapse button (small containers only) */
+{{ $scope }} .geomap-filters__toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: var(--wm-popup-bg);
+  color: var(--wm-popup-text);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  opacity: 0.75;
+  cursor: pointer;
+}
+{{ $scope }} .geomap-filters__toggle:hover,
+{{ $scope }} .geomap-filters__toggle:focus-visible {
+  opacity: 1;
+}
+{{ $scope }} .geomap-filters__toggle:focus-visible {
+  outline: 2px solid var(--wm-filter-selected);
+  outline-offset: 2px;
+}
+@container (max-width: 900px) {
+  /* only when the bar holds at least one filter */
+  {{ $scope }} .geomap-filters:has(.link-speed-filter) .geomap-filters__toggle {
+    display: flex;
+  }
+  /* both filters use .link-speed-filter */
+  {{ $scope }} .geomap-filters[data-collapsed="true"] > .link-speed-filter {
+    display: none;
+  }
+}
 /* Filter bar: link speed filter + OS filter side by side */
 {{ $scope }} .geomap-filters {
   display: flex;
@@ -304,7 +346,8 @@
 }
 /* matches SMALL_SCREEN_QUERY in geomap-shared.js */
 @media (max-width: 899.98px) {
-  {{ $scope }} .link-speed-filter {
+  {{ $scope }} .link-speed-filter,
+  {{ $scope }} .geomap-filters__toggle {
     display: none !important;
   }
 }

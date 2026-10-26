@@ -447,6 +447,8 @@ window.LnmsGeoMap = window.LnmsGeoMap || (function () {
         const osVisible = Object.create(null);
         OS_FILTERS.forEach(({ os }) => { osVisible[os] = true; });
         let filterBarControl = null;
+        let filterBarEl = null;
+        let filterToggleEl = null;
         let osFilterEl = null;
         let osFilterSig = '';
         let linkRenderers = null;
@@ -533,15 +535,37 @@ window.LnmsGeoMap = window.LnmsGeoMap || (function () {
                     options: { position: 'bottomleft' },
                     onAdd: function () {
                         const container = L.DomUtil.create('div', 'geomap-filters leaflet-control');
+
+                        // Collapse button: always the last child (bottom right of the bar)
+                        const toggle = L.DomUtil.create('button', 'geomap-filters__toggle', container);
+                        toggle.type = 'button';
+                        L.DomEvent.on(toggle, 'click', function (e) {
+                            L.DomEvent.stop(e);
+                            setFiltersCollapsed(filterBarEl.dataset.collapsed !== 'true');
+                        });
+
                         L.DomEvent.disableClickPropagation(container);
                         L.DomEvent.disableScrollPropagation(container);
+                        filterBarEl = container;
+                        filterToggleEl = toggle;
+                        setFiltersCollapsed(false);
                         return container;
                     },
                 });
                 filterBarControl = new FilterBarControl();
                 map.addControl(filterBarControl);
             }
-            return filterBarControl.getContainer();
+            return filterBarEl;
+        }
+
+        // Hides the filter UI
+        function setFiltersCollapsed(collapsed) {
+            const label = collapsed ? 'Show filters' : 'Hide filters';
+            filterBarEl.dataset.collapsed = String(collapsed);
+            filterToggleEl.textContent = collapsed ? '+' : '\u2212'; // minus sign, same width as +
+            filterToggleEl.setAttribute('aria-expanded', String(!collapsed));
+            filterToggleEl.setAttribute('aria-label', label);
+            filterToggleEl.title = label;
         }
 
         // ~~ Device OS filter ~~
@@ -617,7 +641,7 @@ window.LnmsGeoMap = window.LnmsGeoMap || (function () {
 
             const show = present.length > 1;
             if (!show) {
-                OS_FILTERS.forEach(({ os }) => { osVisible[os] = true; }); // no filter shown: nothing will stay hidden
+                OS_FILTERS.forEach(({ os }) => { osVisible[os] = true; }); // no filter shown: nothing may stay hidden
             }
 
             // Rebuild the chips only when the set of types (or their icons) changed
@@ -631,7 +655,7 @@ window.LnmsGeoMap = window.LnmsGeoMap || (function () {
             if (osFilterEl) {
                 next ? osFilterEl.replaceWith(next) : osFilterEl.remove();
             } else if (next) {
-                ensureFilterBar().appendChild(next); // appended = right of the speed filter
+                ensureFilterBar().insertBefore(next, filterToggleEl); // right of the speed filter, left of the collapse button
             }
             osFilterEl = next;
         }

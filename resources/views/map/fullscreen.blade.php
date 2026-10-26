@@ -47,6 +47,9 @@ html, body, #fullscreen-map {
    margin-bottom: 0;
    container-type: inline-size;
 }
+#fullscreen-map {
+  container-type: size;
+}
 #fullscreen-map .leaflet-tooltip.leaflet-link-tooltip {
   border: var(--wm-popup-bg);
 }

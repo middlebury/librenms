@@ -10,7 +10,7 @@
   width: 100%;
   padding-bottom: 0;
   margin-bottom: 0;
-  container-type: inline-size;
+  container-type: size;
 }
 /* Fit link popups to small widgets: wrapper = content + 2x8px margin + 2x6px padding */
 #worldmap_widget-{{ $id }} .leaflet-popup.link-style .leaflet-popup-content-wrapper {
