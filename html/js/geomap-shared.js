@@ -1,13 +1,13 @@
 /**
  * --- ADDED FILE: shared map rendering
- * 
+ *
  * geomap-shared.js
  *
  * Shared rendering for the fullscreen geographic map (resources/views/map/fullscreen.blade.php)
  * and the world map dashboard widget (resources/views/widgets/world-map.blade.php).
  *
  * Load after leaflet.js, leaflet.markercluster.js and leaflet.awesome-markers.min.js.
- * 
+ *
  * Styles: resources/views/map/partials/geomap-shared-styles.blade.php
  *
  * Usage:
@@ -27,11 +27,12 @@ window.LnmsGeoMap = window.LnmsGeoMap || (function () {
     const LINK_DOWN_COLOR = '#e40606';
     const LINK_RENDER_PADDING = 0.5;     // 0.5 = half a screen drawn beyond the viewport on each side
     const LINK_RENDER_THROTTLE_MS = 100;
+    const LINK_HIT_WEIGHT = window.matchMedia('(pointer: coarse)').matches ? 12 : 8; // Invisible hit line width (px) around each link line: wider on touch devices for easier selection via finger taps
     const SMALL_SCREEN_QUERY = '(max-width: 899.98px)'; // matches the .link-speed-filter @media rule
     const CLUSTER_CLASS = 'Cluster marker-cluster marker-cluster-small leaflet-zoom-animated leaflet-clickable';
-    
+
     // ~~ Filters ~~
-    
+
     const LINK_SPEED_BUCKETS = [
         { key: '1G',   label: '<10G', min: 0,            color: getSpeedColor(0) },
         { key: '10G',  label: '10G',  min: 10000000000,  color: getSpeedColor(10e9) },
@@ -439,6 +440,7 @@ window.LnmsGeoMap = window.LnmsGeoMap || (function () {
         // Per-instance state
         const deviceMarkers = Object.create(null);
         const linkLines = Object.create(null);
+        const linkHits = Object.create(null);
         const overlapLabels = Object.create(null);
         const speedVisible = Object.create(null);
         LINK_SPEED_BUCKETS.forEach(({ key }) => { speedVisible[key] = true; });
@@ -528,7 +530,7 @@ window.LnmsGeoMap = window.LnmsGeoMap || (function () {
         }
 
         // ~~ Filter bar (bottom-left): link speed filter, OS filter to its right ~~
-        
+
         function ensureFilterBar() {
             if (!filterBarControl) {
                 const FilterBarControl = L.Control.extend({
@@ -766,6 +768,19 @@ window.LnmsGeoMap = window.LnmsGeoMap || (function () {
             return createLinkHTML(layer._lnmsView, variant);
         }
 
+        // Wider, transparent line on top of visible links (forwards pointer events to it, invisible line owns the popup and tooltip)
+        function createHitLine(line, latlngs, pane) {
+            const hit = L.polyline(latlngs, {
+                pane,
+                renderer: linkRenderers[pane],
+                weight: LINK_HIT_WEIGHT,
+                opacity: 0,
+                interactive: true,
+            });
+            hit.on('click mouseover mousemove mouseout', e => line.fire(e.type, e));
+            return hit;
+        }
+
         function renderGeoLinks() {
             if (!opts.geoLinks) {
                 return;
@@ -790,7 +805,9 @@ window.LnmsGeoMap = window.LnmsGeoMap || (function () {
                 // A layer's pane can't change after creation: rebuild if up/down state flipped
                 if (line && line.options.pane !== pane) {
                     opts.linkContainer.removeLayer(line);
+                    opts.linkContainer.removeLayer(linkHits[link_id]);
                     delete linkLines[link_id];
+                    delete linkHits[link_id];
                     line = null;
                 }
 
@@ -816,6 +833,7 @@ window.LnmsGeoMap = window.LnmsGeoMap || (function () {
                 if (line) {
                     line._lnmsView = { ...link, members };
                     line.setLatLngs(latlngs).setStyle(linkStyle);
+                    linkHits[link_id].setLatLngs(latlngs);
                     // Content is generated on open, so only an open pop-up/tooltip needs refreshing
                     if (line.isPopupOpen()) {
                         line.getPopup().update();
@@ -824,12 +842,14 @@ window.LnmsGeoMap = window.LnmsGeoMap || (function () {
                         line.getTooltip().update();
                     }
                 } else {
-                    line = L.polyline(latlngs, { ...linkStyle, pane, renderer: linkRenderers[pane] });
+                    line = L.polyline(latlngs, { ...linkStyle, pane, renderer: linkRenderers[pane], interactive: false });
                     line._lnmsView = { ...link, members };
                     line.bindTooltip(linkTooltipContent, { className: 'leaflet-link-tooltip', sticky: true, opacity: 0.9 });
                     line.bindPopup(linkPopupContent, Object.assign({}, opts.linkPopupOptions(), { className: 'link-style' }));
                     linkLines[link_id] = line;
                     opts.linkContainer.addLayer(line);
+                    linkHits[link_id] = createHitLine(line, latlngs, pane);
+                    opts.linkContainer.addLayer(linkHits[link_id]);
                 }
                 line._lnmsSig = sig;
                 setLineBase(line, width);
@@ -842,7 +862,9 @@ window.LnmsGeoMap = window.LnmsGeoMap || (function () {
             for (const link_id in linkLines) {
                 if (!(link_id in rendered)) {
                     opts.linkContainer.removeLayer(linkLines[link_id]);
+                    opts.linkContainer.removeLayer(linkHits[link_id]);
                     delete linkLines[link_id];
+                    delete linkHits[link_id];
                 }
             }
             for (const link_id in overlapLabels) {
@@ -928,8 +950,8 @@ window.LnmsGeoMap = window.LnmsGeoMap || (function () {
                 linksDownPane: L.svg({ pane: 'linksDownPane', padding: LINK_RENDER_PADDING }),
             };
 
-            // Redraw the link renderers during a pan (throttled), same as how tile layers load while the map moves 
-            map.on('move', L.Util.throttle(function () { 
+            // Redraw the link renderers during a pan (throttled), same as how tile layers load while the map moves
+            map.on('move', L.Util.throttle(function () {
                 if (map._animatingZoom) {
                     return; // mid zoom animation: Leaflet redraws on zoomend
                 }

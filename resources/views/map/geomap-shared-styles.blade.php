@@ -190,6 +190,11 @@
   font-weight: normal;
   margin-bottom: 4px;
 }
+/* Link lines: no browser focus ring on tap (black box around selected links on dashboard display)*/
+{{ $scope }} path.leaflet-interactive:focus,
+{{ $scope }} path.leaflet-interactive:focus-visible {
+  outline: none;
+}
 
 /* Link tooltip */
 {{ $scope }} .leaflet-tooltip.leaflet-link-tooltip {
